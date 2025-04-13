@@ -20,7 +20,7 @@ export interface Regulation {
   id: string
   name: string
   description: string
-  referenceLink: string
+  referenceLinks: string[]
   projectId: string
 }
 

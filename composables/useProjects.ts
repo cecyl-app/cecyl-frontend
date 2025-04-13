@@ -78,14 +78,14 @@ const mockRegulations: Regulation[] = [
     id: '1',
     name: 'EMA Regulation N. 21',
     description: 'Good Manufacturing Practice (GMP) guidelines for pharmaceutical products',
-    referenceLink: 'www.ema.it/rule21',
+    referenceLinks: ['www.ema.it/rule21', 'www.fda.gov/regulations/guidelines/21'],
     projectId: '1',
   },
   {
     id: '2',
     name: 'Clean Room Standards',
     description: 'All pharmaceutical instruments need to be cleaned before use according to ISO 14644-1 standards',
-    referenceLink: 'www.iso.org/14644-1',
+    referenceLinks: ['www.iso.org/14644-1', 'www.gov.uk/iso14644'],
     projectId: '1',
   },
 ]

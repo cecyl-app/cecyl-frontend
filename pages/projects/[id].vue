@@ -102,15 +102,29 @@
                     @click="deleteRegulation(item.id)"
                   />
                 </template>
-                <template v-slot:item.referenceLink="{ item }">
-                  <v-btn
-                    :href="item.referenceLink"
-                    target="_blank"
-                    variant="text"
-                    color="primary"
-                  >
-                    View Reference
-                  </v-btn>
+                <template v-slot:item.referenceLinks="{ item }">
+                  <div class="d-flex flex-wrap gap-1">
+                    <v-tooltip
+                      v-for="(link, index) in item.referenceLinks"
+                      :key="index"
+                      :text="link.trim()"
+                      location="top"
+                    >
+                      <template v-slot:activator="{ props }">
+                        <v-chip
+                          v-bind="props"
+                          :href="link.trim().startsWith('http') ? link.trim() : `https://${link.trim()}`"
+                          target="_blank"
+                          variant="outlined"
+                          rel="noopener noreferrer"
+                          class="text-decoration-none ma-1"
+                          density="comfortable"
+                        >
+                          {{ getShortLink(link.trim()) }}
+                        </v-chip>
+                      </template>
+                    </v-tooltip>
+                  </div>
                 </template>
               </v-data-table>
             </v-col>
@@ -221,10 +235,13 @@
             auto-grow
             required
           />
-          <v-text-field
-            v-model="regulationForm.referenceLink"
-            label="Reference Link"
+          <v-textarea
+            v-model="regulationForm.referenceLinks"
+            label="Reference Links (one per line)"
+            auto-grow
             required
+            hint="Enter one reference link per line"
+            persistent-hint
           />
         </v-card-text>
         <v-card-actions>
@@ -381,7 +398,7 @@ const editingRegulation = ref<Regulation | null>(null)
 const regulationForm = ref({
   name: '',
   description: '',
-  referenceLink: '',
+  referenceLinks: '',
   projectId: project?.id || '',
 })
 
@@ -390,7 +407,7 @@ const openRegulationDialog = (regulation?: Regulation) => {
   regulationForm.value = {
     name: regulation?.name || '',
     description: regulation?.description || '',
-    referenceLink: regulation?.referenceLink || '',
+    referenceLinks: regulation?.referenceLinks?.join('\n') || '',
     projectId: project?.id || '',
   }
   regulationDialog.value = true
@@ -402,7 +419,7 @@ const saveRegulation = () => {
   const regulationData = {
     name: regulationForm.value.name,
     description: regulationForm.value.description,
-    referenceLink: regulationForm.value.referenceLink,
+    referenceLinks: regulationForm.value.referenceLinks.split('\n').filter(link => link.trim()),
     projectId: project.value.id,
   }
 
@@ -464,7 +481,7 @@ const saveTimeline = () => {
 const regulationHeaders = [
   { title: 'Name', key: 'name' },
   { title: 'Description', key: 'description' },
-  { title: 'Reference', key: 'referenceLink' },
+  { title: 'Reference', key: 'referenceLinks' },
   { title: 'Actions', key: 'actions', sortable: false },
 ]
 
@@ -505,5 +522,13 @@ const getPhaseIcon = (status: string) => {
     default:
       return 'mdi-circle'
   }
+}
+
+const getShortLink = (link: string) => {
+  // Remove protocol and www if present
+  const cleanLink = link.replace(/^(https?:\/\/)?(www\.)?/, '')
+  // Get the domain and first part of the path
+  const parts = cleanLink.split('/')
+  return parts[0] + (parts[1] ? '/...' : '')
 }
 </script> 
