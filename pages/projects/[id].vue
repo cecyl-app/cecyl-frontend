@@ -16,6 +16,7 @@
     <v-tabs v-model="activeTab" color="primary">
       <v-tab value="requirements">Requirements</v-tab>
       <v-tab value="regulations">Regulations</v-tab>
+      <v-tab value="timeline">Timeline</v-tab>
     </v-tabs>
 
     <v-window v-model="activeTab">
@@ -116,6 +117,52 @@
           </v-row>
         </v-container>
       </v-window-item>
+
+      <v-window-item value="timeline">
+        <v-container>
+          <v-row>
+            <v-col cols="12" class="d-flex justify-end mb-4">
+              <v-btn
+                color="primary"
+                prepend-icon="mdi-plus"
+                @click="openTimelineDialog()"
+              >
+                Add Phase
+              </v-btn>
+            </v-col>
+            <v-col cols="12">
+              <v-timeline>
+                <v-timeline-item
+                  v-for="phase in projectTimeline"
+                  :key="phase.id"
+                  :color="getPhaseColor(phase.status)"
+                  :icon="getPhaseIcon(phase.status)"
+                >
+                  <template v-slot:opposite>
+                    {{ phase.duration }} {{ phase.durationUnit }}
+                  </template>
+                  <v-card>
+                    <v-card-title>{{ phase.name }}</v-card-title>
+                    <v-card-text>{{ phase.description }}</v-card-text>
+                    <v-card-actions>
+                      <v-chip :color="getPhaseColor(phase.status)">
+                        {{ phase.status }}
+                      </v-chip>
+                      <v-spacer></v-spacer>
+                      <v-btn icon @click="openTimelineDialog(phase)">
+                        <v-icon>mdi-pencil</v-icon>
+                      </v-btn>
+                      <v-btn icon @click="deleteTimelinePhase(phase.id)">
+                        <v-icon>mdi-delete</v-icon>
+                      </v-btn>
+                    </v-card-actions>
+                  </v-card>
+                </v-timeline-item>
+              </v-timeline>
+            </v-col>
+          </v-row>
+        </v-container>
+      </v-window-item>
     </v-window>
 
     <!-- Requirement Dialog -->
@@ -198,11 +245,73 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- Timeline Dialog -->
+    <v-dialog v-model="timelineDialog" max-width="600">
+      <v-card>
+        <v-card-title>
+          {{ editingTimeline ? 'Edit Phase' : 'New Phase' }}
+        </v-card-title>
+        <v-card-text>
+          <v-text-field
+            v-model="timelineForm.name"
+            label="Name"
+            required
+          />
+          <v-textarea
+            v-model="timelineForm.description"
+            label="Description"
+            auto-grow
+            required
+          />
+          <v-row>
+            <v-col cols="6">
+              <v-text-field
+                v-model.number="timelineForm.duration"
+                label="Duration"
+                type="number"
+                required
+              />
+            </v-col>
+            <v-col cols="6">
+              <v-select
+                v-model="timelineForm.durationUnit"
+                :items="['days', 'weeks', 'months']"
+                label="Unit"
+                required
+              />
+            </v-col>
+          </v-row>
+          <v-select
+            v-model="timelineForm.status"
+            :items="['not-started', 'in-progress', 'completed']"
+            label="Status"
+            required
+          />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn
+            color="error"
+            variant="text"
+            @click="timelineDialog = false"
+          >
+            Cancel
+          </v-btn>
+          <v-btn
+            color="primary"
+            @click="saveTimeline"
+          >
+            Save
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-container>
 </template>
 
 <script setup lang="ts">
-import type { Project, Requirement, Regulation } from '~/types/project'
+import type { Project, Requirement, Regulation, TimelinePhase } from '~/types/project'
 
 const route = useRoute()
 const router = useRouter()
@@ -210,17 +319,22 @@ const {
   getProjectById, 
   getProjectRequirements, 
   getProjectRegulations,
+  getProjectTimeline,
   createRequirement,
   updateRequirement,
   deleteRequirement,
   createRegulation,
   updateRegulation,
   deleteRegulation,
+  createTimelinePhase,
+  updateTimelinePhase,
+  deleteTimelinePhase
 } = useProjects()
 
 const project = computed<Project | undefined>(() => getProjectById(route.params.id))
 const projectRequirements = computed<Requirement[]>(() => getProjectRequirements(route.params.id))
 const projectRegulations = computed<Regulation[]>(() => getProjectRegulations(route.params.id))
+const projectTimeline = computed<TimelinePhase[]>(() => getProjectTimeline(route.params.id))
 
 const activeTab = ref('requirements')
 
@@ -230,6 +344,7 @@ const editingRequirement = ref<Requirement | null>(null)
 const requirementForm = ref({
   title: '',
   description: '',
+  projectId: project?.id || '',
 })
 
 const openRequirementDialog = (requirement?: Requirement) => {
@@ -237,6 +352,7 @@ const openRequirementDialog = (requirement?: Requirement) => {
   requirementForm.value = {
     title: requirement?.title || '',
     description: requirement?.description || '',
+    projectId: project?.id || '',
   }
   requirementDialog.value = true
 }
@@ -266,6 +382,7 @@ const regulationForm = ref({
   name: '',
   description: '',
   referenceLink: '',
+  projectId: project?.id || '',
 })
 
 const openRegulationDialog = (regulation?: Regulation) => {
@@ -274,6 +391,7 @@ const openRegulationDialog = (regulation?: Regulation) => {
     name: regulation?.name || '',
     description: regulation?.description || '',
     referenceLink: regulation?.referenceLink || '',
+    projectId: project?.id || '',
   }
   regulationDialog.value = true
 }
@@ -297,6 +415,52 @@ const saveRegulation = () => {
   regulationDialog.value = false
 }
 
+// Timeline Dialog
+const timelineDialog = ref(false)
+const editingTimeline = ref<TimelinePhase | null>(null)
+const timelineForm = ref({
+  name: '',
+  description: '',
+  duration: 0,
+  durationUnit: 'weeks',
+  status: 'not-started',
+  projectId: project?.id || '',
+})
+
+const openTimelineDialog = (phase?: TimelinePhase) => {
+  editingTimeline.value = phase || null
+  timelineForm.value = {
+    name: phase?.name || '',
+    description: phase?.description || '',
+    duration: phase?.duration || 0,
+    durationUnit: phase?.durationUnit || 'weeks',
+    status: phase?.status || 'not-started',
+    projectId: project?.id || '',
+  }
+  timelineDialog.value = true
+}
+
+const saveTimeline = () => {
+  if (!project.value) return
+
+  const timelineData = {
+    name: timelineForm.value.name,
+    description: timelineForm.value.description,
+    duration: timelineForm.value.duration,
+    durationUnit: timelineForm.value.durationUnit,
+    status: timelineForm.value.status,
+    projectId: project.value.id,
+  }
+
+  if (editingTimeline.value) {
+    updateTimelinePhase(editingTimeline.value.id, timelineData)
+  } else {
+    createTimelinePhase(timelineData)
+  }
+
+  timelineDialog.value = false
+}
+
 const regulationHeaders = [
   { title: 'Name', key: 'name' },
   { title: 'Description', key: 'description' },
@@ -310,8 +474,36 @@ const getStatusColor = (status: string) => {
       return 'success'
     case 'on-hold':
       return 'warning'
-    default:
+    case 'completed':
       return 'info'
+    default:
+      return 'grey'
+  }
+}
+
+const getPhaseColor = (status: string) => {
+  switch (status) {
+    case 'completed':
+      return 'success'
+    case 'in-progress':
+      return 'primary'
+    case 'not-started':
+      return 'grey'
+    default:
+      return 'grey'
+  }
+}
+
+const getPhaseIcon = (status: string) => {
+  switch (status) {
+    case 'completed':
+      return 'mdi-check-circle'
+    case 'in-progress':
+      return 'mdi-progress-clock'
+    case 'not-started':
+      return 'mdi-circle-outline'
+    default:
+      return 'mdi-circle'
   }
 }
 </script> 

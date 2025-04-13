@@ -1,4 +1,4 @@
-import type { Project, Requirement, Regulation } from '~/types/project'
+import type { Project, Requirement, Regulation, TimelinePhase } from '~/types/project'
 
 // Mock data
 const mockProjects: Project[] = [
@@ -8,6 +8,35 @@ const mockProjects: Project[] = [
     description: 'Development of a new mRNA-based COVID-19 vaccine',
     status: 'active',
     createdAt: '2024-01-15',
+    timeline: [
+      {
+        id: '1',
+        name: 'Research & Development',
+        description: 'Initial research and development phase',
+        duration: 12,
+        durationUnit: 'weeks',
+        status: 'completed',
+        projectId: '1',
+      },
+      {
+        id: '2',
+        name: 'Pre-clinical Trials',
+        description: 'Animal testing and safety assessment',
+        duration: 8,
+        durationUnit: 'weeks',
+        status: 'completed',
+        projectId: '1',
+      },
+      {
+        id: '3',
+        name: 'Phase I Clinical Trials',
+        description: 'Safety testing in healthy volunteers',
+        duration: 6,
+        durationUnit: 'weeks',
+        status: 'in-progress',
+        projectId: '1',
+      },
+    ],
   },
   {
     id: '2',
@@ -139,6 +168,44 @@ export const useProjects = () => {
     regulations.value = regulations.value.filter(r => r.id !== id)
   }
 
+  // Timeline CRUD
+  const createTimelinePhase = (phase: Omit<TimelinePhase, 'id'>) => {
+    const newPhase: TimelinePhase = {
+      ...phase,
+      id: Date.now().toString(),
+    }
+    const project = projects.value.find(p => p.id === phase.projectId)
+    if (project) {
+      if (!project.timeline) {
+        project.timeline = []
+      }
+      project.timeline.push(newPhase)
+    }
+    return newPhase
+  }
+
+  const updateTimelinePhase = (id: string, phase: Partial<TimelinePhase>) => {
+    const project = projects.value.find(p => p.timeline?.some(t => t.id === id))
+    if (project?.timeline) {
+      const index = project.timeline.findIndex(t => t.id === id)
+      if (index !== -1) {
+        project.timeline[index] = { ...project.timeline[index], ...phase }
+      }
+    }
+  }
+
+  const deleteTimelinePhase = (id: string) => {
+    const project = projects.value.find(p => p.timeline?.some(t => t.id === id))
+    if (project?.timeline) {
+      project.timeline = project.timeline.filter(t => t.id !== id)
+    }
+  }
+
+  const getProjectTimeline = (projectId: string) => {
+    const project = projects.value.find(p => p.id === projectId)
+    return project?.timeline || []
+  }
+
   // Getters
   const getProjectById = (id: string) => {
     return projects.value.find(project => project.id === id)
@@ -165,6 +232,10 @@ export const useProjects = () => {
     createRegulation,
     updateRegulation,
     deleteRegulation,
+    createTimelinePhase,
+    updateTimelinePhase,
+    deleteTimelinePhase,
+    getProjectTimeline,
     getProjectById,
     getProjectRequirements,
     getProjectRegulations,
