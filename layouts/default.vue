@@ -13,7 +13,7 @@
     </v-app-bar>
 
     <v-main>
-      <v-container>
+      <v-container fluid>
         <slot />
       </v-container>
     </v-main>
@@ -23,13 +23,7 @@
       color="primary"
       class="text-white"
     >
-      <v-container>
-        <v-row justify="center">
-          <v-col cols="12" class="text-center">
-            <p class="mb-0">© 2025 Cecyl - From Bench to Bedside</p>
-          </v-col>
-        </v-row>
-      </v-container>
+            <p class="mb-0 text-center w-100">© 2025 Cecyl - From Bench to Bedside</p>
     </v-footer>
   </v-app>
 </template> 

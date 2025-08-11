@@ -1,12 +1,15 @@
+import type { Report } from './report'
+
 export interface Project {
   id: string
   name: string
   description: string
   status: 'active' | 'completed' | 'on-hold'
   createdAt: string
-  timeline?: TimelinePhase[]
+  reports?: Report[]
 }
 
+// Keep existing interfaces for backward compatibility
 export interface Requirement {
   id: string
   title: string

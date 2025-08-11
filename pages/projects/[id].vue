@@ -1,534 +1,390 @@
 <template>
-  <v-container v-if="project">
-    <v-row>
-      <v-col cols="12">
-        <h1 class="text-h3 mb-4">{{ project.name }}</h1>
-        <v-chip
-          :color="getStatusColor(project.status)"
-          class="mb-4"
+  <div>
+    <!-- Main Content Area -->
+    <v-container fluid class="pa-0">
+      <v-row no-gutters class="fill-height">
+        <!-- Left Sidebar: Sections Navigation -->
+        <v-col 
+          cols="12" 
+          sm="3" 
+          md="2" 
+          class="d-flex flex-column border-e"
         >
-          {{ project.status }}
-        </v-chip>
-        <p class="text-body-1 mb-6">{{ project.description }}</p>
-      </v-col>
-    </v-row>
-
-    <v-tabs v-model="activeTab" color="primary">
-      <v-tab value="requirements">Requirements</v-tab>
-      <v-tab value="regulations">Regulations</v-tab>
-      <v-tab value="timeline">Timeline</v-tab>
-    </v-tabs>
-
-    <v-window v-model="activeTab">
-      <v-window-item value="requirements">
-        <v-container>
-          <v-row>
-            <v-col cols="12" class="d-flex justify-end mb-4">
+          <SectionSidebar
+            v-if="currentReport"
+            :report-id="currentReport.id"
+            :active-section="activeSection"
+            @section-selected="handleSectionSelected"
+          />
+          
+          <!-- No Report State -->
+          <v-card v-else class="flex-grow-1 d-flex align-center justify-center" flat>
+            <div class="text-center pa-4">
+              <v-icon size="60" color="grey-lighten-2" class="mb-3">
+                mdi-file-document-plus-outline
+              </v-icon>
+              <h3 class="text-subtitle-1 mb-3">No Report Found</h3>
+              <p class="text-body-2 text-grey mb-3">
+                Create a report to start working with sections
+              </p>
               <v-btn
                 color="primary"
                 prepend-icon="mdi-plus"
-                @click="openRequirementDialog()"
+                size="small"
+                @click="handleCreateReport"
               >
-                Add Requirement
+                Create Report
               </v-btn>
-            </v-col>
-            <v-col cols="12">
-              <v-card
-                v-for="requirement in projectRequirements"
-                :key="requirement.id"
-                class="mb-4"
-              >
-                <v-card-item>
-                  <v-card-title>{{ requirement.title }}</v-card-title>
-                  <v-card-subtitle>
-                    Last updated: {{ new Date(requirement.updatedAt).toLocaleDateString() }}
-                  </v-card-subtitle>
-                  <template v-slot:append>
-                    <v-btn
-                      icon="mdi-pencil"
-                      variant="text"
-                      @click="openRequirementDialog(requirement)"
-                    />
-                    <v-btn
-                      icon="mdi-delete"
-                      variant="text"
-                      color="error"
-                      @click="deleteRequirement(requirement.id)"
-                    />
-                  </template>
-                </v-card-item>
-                <v-card-text>
-                  <v-textarea
-                    v-model="requirement.description"
-                    auto-grow
-                    variant="outlined"
-                    readonly
+            </div>
+          </v-card>
+        </v-col>
+
+        <!-- Center: Markdown Editor -->
+        <v-col 
+          cols="12" 
+          sm="6" 
+          md="7" 
+          class="d-flex flex-column"
+        >
+          <div v-if="activeSection" class="d-flex flex-column fill-height">
+            <!-- Editor Header -->
+            <v-sheet class="pa-3 border-b bg-grey-lighten-5" elevation="0">
+              <div class="d-flex align-center justify-space-between">
+                <div>
+                  <h2 class="text-subtitle-1 font-weight-bold">{{ activeSection.title }}</h2>
+                  <p class="text-caption text-grey mt-1">
+                    Last updated {{ formatRelativeTime(activeSection.updatedAt) }}
+                  </p>
+                </div>
+                <div>
+                  <v-btn
+                    icon="mdi-content-save"
+                    variant="text"
+                    size="small"
+                    :color="hasUnsavedChanges ? 'primary' : 'grey'"
+                    @click="handleSaveSection"
+                    :disabled="!hasUnsavedChanges"
                   />
+                  <v-btn
+                    icon="mdi-eye"
+                    variant="text"
+                    size="small"
+                    color="primary"
+                    @click="handlePreviewReport"
+                    :disabled="!currentReport"
+                  />
+                </div>
+              </div>
+            </v-sheet>
+            
+            <!-- Markdown Editor -->
+            <div class="flex-grow-1">
+              <MarkdownEditor
+                v-model="sectionContent"
+                :title="activeSection.title"
+                @change="handleContentChange"
+              />
+            </div>
+          </div>
+          
+          <!-- No Section Selected State -->
+          <v-card v-else class="flex-grow-1 d-flex align-center justify-center" flat>
+            <div class="text-center pa-6">
+              <v-icon size="60" color="grey-lighten-2" class="mb-3">
+                mdi-text-box-outline
+              </v-icon>
+              <h3 class="text-subtitle-1 mb-3">Select a Section</h3>
+              <p class="text-body-2 text-grey">
+                Choose a section from the sidebar to start editing
+              </p>
+            </div>
+          </v-card>
+        </v-col>
+
+        <!-- Right Sidebar: AI Enhancement & File Repository -->
+        <v-col 
+          cols="12" 
+          sm="3" 
+          md="3" 
+          class="d-flex flex-column border-s"
+        >
+          <!-- AI Enhancement Panel -->
+          <v-sheet class="flex-grow-1 border-b" elevation="0">
+            <AiEnhancement
+              :section-id="activeSection?.id"
+              :section-content="sectionContent"
+              @content-enhanced="handleContentEnhanced"
+            />
+          </v-sheet>
+          
+          <!-- File Repository Panel -->
+          <v-sheet class="flex-grow-1" elevation="0">
+            <FileRepository v-if="project" :project-id="project.id" />
+          </v-sheet>
+        </v-col>
+      </v-row>
+    </v-container>
+
+    <!-- Create Report Dialog -->
+    <v-dialog v-model="reportDialog" max-width="500">
+      <v-card>
+        <v-card-title>Create New Report</v-card-title>
+        <v-card-text>
+          <v-text-field
+            v-model="reportForm.title"
+            label="Report Title"
+            variant="outlined"
+            required
+            placeholder="e.g., Clinical Trial Report"
+          />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn
+            variant="text"
+            @click="reportDialog = false"
+          >
+            Cancel
+          </v-btn>
+          <v-btn
+            color="primary"
+            @click="handleSaveReport"
+            :disabled="!reportForm.title.trim()"
+          >
+            Create
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Preview Report Dialog -->
+    <v-dialog v-model="previewDialog" max-width="1000" scrollable>
+      <v-card>
+        <v-card-title class="d-flex align-center">
+          <v-icon class="me-2">mdi-eye</v-icon>
+          {{ currentReport?.title || 'Report Preview' }}
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pa-0" style="max-height: 80vh;">
+          <div v-if="previewContent.length === 0" class="text-center pa-6">
+            <v-icon size="48" color="grey-lighten-2" class="mb-3">
+              mdi-file-document-outline
+            </v-icon>
+            <p class="text-body-2 text-grey">No sections available to preview</p>
+          </div>
+          <div v-else class="pa-4">
+            <div 
+              v-for="(section, index) in previewContent" 
+              :key="index"
+              class="section-preview mb-6"
+            >
+              <v-card variant="outlined" class="mb-4">
+                <v-card-title class="bg-grey-lighten-5 pa-3">
+                  <div class="d-flex align-center justify-space-between w-100">
+                    <h3 class="text-h6">{{ section.title }}</h3>
+                    <v-chip size="small" color="grey-lighten-1">
+                      {{ formatRelativeTime(section.updatedAt) }}
+                    </v-chip>
+                  </div>
+                </v-card-title>
+                <v-card-text class="pa-4">
+                  <MarkdownViewer :content="section.content" />
                 </v-card-text>
               </v-card>
-            </v-col>
-          </v-row>
-        </v-container>
-      </v-window-item>
-
-      <v-window-item value="regulations">
-        <v-container>
-          <v-row>
-            <v-col cols="12" class="d-flex justify-end mb-4">
-              <v-btn
-                color="primary"
-                prepend-icon="mdi-plus"
-                @click="openRegulationDialog()"
-              >
-                Add Regulation
-              </v-btn>
-            </v-col>
-            <v-col cols="12">
-              <v-data-table
-                :headers="regulationHeaders"
-                :items="projectRegulations"
-                :items-per-page="5"
-              >
-                <template v-slot:item.actions="{ item }">
-                  <v-btn
-                    icon="mdi-pencil"
-                    variant="text"
-                    @click="openRegulationDialog(item)"
-                  />
-                  <v-btn
-                    icon="mdi-delete"
-                    variant="text"
-                    color="error"
-                    @click="deleteRegulation(item.id)"
-                  />
-                </template>
-                <template v-slot:item.referenceLinks="{ item }">
-                  <div class="d-flex flex-wrap gap-1">
-                    <v-tooltip
-                      v-for="(link, index) in item.referenceLinks"
-                      :key="index"
-                      :text="link.trim()"
-                      location="top"
-                    >
-                      <template v-slot:activator="{ props }">
-                        <v-chip
-                          v-bind="props"
-                          :href="link.trim().startsWith('http') ? link.trim() : `https://${link.trim()}`"
-                          target="_blank"
-                          variant="outlined"
-                          rel="noopener noreferrer"
-                          class="text-decoration-none ma-1"
-                          density="comfortable"
-                        >
-                          {{ getShortLink(link.trim()) }}
-                        </v-chip>
-                      </template>
-                    </v-tooltip>
-                  </div>
-                </template>
-              </v-data-table>
-            </v-col>
-          </v-row>
-        </v-container>
-      </v-window-item>
-
-      <v-window-item value="timeline">
-        <v-container>
-          <v-row>
-            <v-col cols="12" class="d-flex justify-end mb-4">
-              <v-btn
-                color="primary"
-                prepend-icon="mdi-plus"
-                @click="openTimelineDialog()"
-              >
-                Add Phase
-              </v-btn>
-            </v-col>
-            <v-col cols="12">
-              <v-timeline>
-                <v-timeline-item
-                  v-for="phase in projectTimeline"
-                  :key="phase.id"
-                  :color="getPhaseColor(phase.status)"
-                  :icon="getPhaseIcon(phase.status)"
-                >
-                  <template v-slot:opposite>
-                    {{ phase.duration }} {{ phase.durationUnit }}
-                  </template>
-                  <v-card>
-                    <v-card-title>{{ phase.name }}</v-card-title>
-                    <v-card-text>{{ phase.description }}</v-card-text>
-                    <v-card-actions>
-                      <v-chip :color="getPhaseColor(phase.status)">
-                        {{ phase.status }}
-                      </v-chip>
-                      <v-spacer></v-spacer>
-                      <v-btn icon @click="openTimelineDialog(phase)">
-                        <v-icon>mdi-pencil</v-icon>
-                      </v-btn>
-                      <v-btn icon @click="deleteTimelinePhase(phase.id)">
-                        <v-icon>mdi-delete</v-icon>
-                      </v-btn>
-                    </v-card-actions>
-                  </v-card>
-                </v-timeline-item>
-              </v-timeline>
-            </v-col>
-          </v-row>
-        </v-container>
-      </v-window-item>
-    </v-window>
-
-    <!-- Requirement Dialog -->
-    <v-dialog v-model="requirementDialog" max-width="600">
-      <v-card>
-        <v-card-title>
-          {{ editingRequirement ? 'Edit Requirement' : 'New Requirement' }}
-        </v-card-title>
-        <v-card-text>
-          <v-text-field
-            v-model="requirementForm.title"
-            label="Title"
-            required
-          />
-          <v-textarea
-            v-model="requirementForm.description"
-            label="Description"
-            auto-grow
-            required
-          />
+            </div>
+          </div>
         </v-card-text>
+        <v-divider />
         <v-card-actions>
           <v-spacer />
           <v-btn
-            color="error"
-            variant="text"
-            @click="requirementDialog = false"
-          >
-            Cancel
-          </v-btn>
-          <v-btn
             color="primary"
-            @click="saveRequirement"
+            @click="previewDialog = false"
           >
-            Save
+            Close
           </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
-
-    <!-- Regulation Dialog -->
-    <v-dialog v-model="regulationDialog" max-width="600">
-      <v-card>
-        <v-card-title>
-          {{ editingRegulation ? 'Edit Regulation' : 'New Regulation' }}
-        </v-card-title>
-        <v-card-text>
-          <v-text-field
-            v-model="regulationForm.name"
-            label="Name"
-            required
-          />
-          <v-textarea
-            v-model="regulationForm.description"
-            label="Description"
-            auto-grow
-            required
-          />
-          <v-textarea
-            v-model="regulationForm.referenceLinks"
-            label="Reference Links (one per line)"
-            auto-grow
-            required
-            hint="Enter one reference link per line"
-            persistent-hint
-          />
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn
-            color="error"
-            variant="text"
-            @click="regulationDialog = false"
-          >
-            Cancel
-          </v-btn>
-          <v-btn
-            color="primary"
-            @click="saveRegulation"
-          >
-            Save
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
-    <!-- Timeline Dialog -->
-    <v-dialog v-model="timelineDialog" max-width="600">
-      <v-card>
-        <v-card-title>
-          {{ editingTimeline ? 'Edit Phase' : 'New Phase' }}
-        </v-card-title>
-        <v-card-text>
-          <v-text-field
-            v-model="timelineForm.name"
-            label="Name"
-            required
-          />
-          <v-textarea
-            v-model="timelineForm.description"
-            label="Description"
-            auto-grow
-            required
-          />
-          <v-row>
-            <v-col cols="6">
-              <v-text-field
-                v-model.number="timelineForm.duration"
-                label="Duration"
-                type="number"
-                required
-              />
-            </v-col>
-            <v-col cols="6">
-              <v-select
-                v-model="timelineForm.durationUnit"
-                :items="['days', 'weeks', 'months']"
-                label="Unit"
-                required
-              />
-            </v-col>
-          </v-row>
-          <v-select
-            v-model="timelineForm.status"
-            :items="['not-started', 'in-progress', 'completed']"
-            label="Status"
-            required
-          />
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn
-            color="error"
-            variant="text"
-            @click="timelineDialog = false"
-          >
-            Cancel
-          </v-btn>
-          <v-btn
-            color="primary"
-            @click="saveTimeline"
-          >
-            Save
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-  </v-container>
+  </div>
 </template>
 
 <script setup lang="ts">
-import type { Project, Requirement, Regulation, TimelinePhase } from '~/types/project'
+import type { Project } from '~/types/project'
+import type { Report, Section } from '~/types/report'
 
 const route = useRoute()
 const router = useRouter()
+
+// Composables
+const { getProjectById } = useProjects()
 const { 
-  getProjectById, 
-  getProjectRequirements, 
-  getProjectRegulations,
-  getProjectTimeline,
-  createRequirement,
-  updateRequirement,
-  deleteRequirement,
-  createRegulation,
-  updateRegulation,
-  deleteRegulation,
-  createTimelinePhase,
-  updateTimelinePhase,
-  deleteTimelinePhase
-} = useProjects()
+  getProjectReports, 
+  createReport, 
+  getSectionById, 
+  updateSection 
+} = useReports()
 
-const project = computed<Project | undefined>(() => getProjectById(route.params.id))
-const projectRequirements = computed<Requirement[]>(() => getProjectRequirements(route.params.id))
-const projectRegulations = computed<Regulation[]>(() => getProjectRegulations(route.params.id))
-const projectTimeline = computed<TimelinePhase[]>(() => getProjectTimeline(route.params.id))
+// Reactive data
+const projectId = computed(() => Array.isArray(route.params.id) ? route.params.id[0] : route.params.id)
+const project = computed<Project | undefined>(() => getProjectById(projectId.value))
+const projectReports = computed(() => getProjectReports(projectId.value))
+const currentReport = computed(() => projectReports.value[0]) // Use first report for now
 
-const activeTab = ref('requirements')
+const activeSection = ref<Section | null>(null)
+const sectionContent = ref('')
+const originalContent = ref('')
+const hasUnsavedChanges = computed(() => sectionContent.value !== originalContent.value)
 
-// Requirement Dialog
-const requirementDialog = ref(false)
-const editingRequirement = ref<Requirement | null>(null)
-const requirementForm = ref({
+// Report Dialog
+const reportDialog = ref(false)
+const reportForm = ref({
   title: '',
-  description: '',
-  projectId: project?.id || '',
 })
 
-const openRequirementDialog = (requirement?: Requirement) => {
-  editingRequirement.value = requirement || null
-  requirementForm.value = {
-    title: requirement?.title || '',
-    description: requirement?.description || '',
-    projectId: project?.id || '',
+// Preview Dialog
+const previewDialog = ref(false)
+const previewContent = ref<Array<{ title: string; content: string; updatedAt: string }>>([])
+
+// Auto-save functionality
+let saveTimeout: ReturnType<typeof setTimeout> | null = null
+
+const handleSectionSelected = (section: Section) => {
+  // Save current section if there are unsaved changes
+  if (hasUnsavedChanges.value && activeSection.value) {
+    handleSaveSection()
   }
-  requirementDialog.value = true
+  
+  activeSection.value = section
+  sectionContent.value = section.content
+  originalContent.value = section.content
 }
 
-const saveRequirement = () => {
-  if (!project.value) return
-
-  const requirementData = {
-    title: requirementForm.value.title,
-    description: requirementForm.value.description,
-    projectId: project.value.id,
+const handleContentChange = (content: string) => {
+  sectionContent.value = content
+  
+  // Auto-save after 2 seconds of inactivity
+  if (saveTimeout) {
+    clearTimeout(saveTimeout)
   }
-
-  if (editingRequirement.value) {
-    updateRequirement(editingRequirement.value.id, requirementData)
-  } else {
-    createRequirement(requirementData)
-  }
-
-  requirementDialog.value = false
+  
+  saveTimeout = setTimeout(() => {
+    if (hasUnsavedChanges.value) {
+      handleSaveSection()
+    }
+  }, 2000)
 }
 
-// Regulation Dialog
-const regulationDialog = ref(false)
-const editingRegulation = ref<Regulation | null>(null)
-const regulationForm = ref({
-  name: '',
-  description: '',
-  referenceLinks: '',
-  projectId: project?.id || '',
-})
-
-const openRegulationDialog = (regulation?: Regulation) => {
-  editingRegulation.value = regulation || null
-  regulationForm.value = {
-    name: regulation?.name || '',
-    description: regulation?.description || '',
-    referenceLinks: regulation?.referenceLinks?.join('\n') || '',
-    projectId: project?.id || '',
+const handleSaveSection = () => {
+  if (!activeSection.value || !hasUnsavedChanges.value) return
+  
+  updateSection(activeSection.value.id, {
+    content: sectionContent.value
+  })
+  
+  originalContent.value = sectionContent.value
+  
+  if (saveTimeout) {
+    clearTimeout(saveTimeout)
+    saveTimeout = null
   }
-  regulationDialog.value = true
 }
 
-const saveRegulation = () => {
-  if (!project.value) return
-
-  const regulationData = {
-    name: regulationForm.value.name,
-    description: regulationForm.value.description,
-    referenceLinks: regulationForm.value.referenceLinks.split('\n').filter(link => link.trim()),
-    projectId: project.value.id,
-  }
-
-  if (editingRegulation.value) {
-    updateRegulation(editingRegulation.value.id, regulationData)
-  } else {
-    createRegulation(regulationData)
-  }
-
-  regulationDialog.value = false
+const handleContentEnhanced = (enhancedContent: string) => {
+  sectionContent.value = enhancedContent
 }
 
-// Timeline Dialog
-const timelineDialog = ref(false)
-const editingTimeline = ref<TimelinePhase | null>(null)
-const timelineForm = ref({
-  name: '',
-  description: '',
-  duration: 0,
-  durationUnit: 'weeks',
-  status: 'not-started',
-  projectId: project?.id || '',
-})
-
-const openTimelineDialog = (phase?: TimelinePhase) => {
-  editingTimeline.value = phase || null
-  timelineForm.value = {
-    name: phase?.name || '',
-    description: phase?.description || '',
-    duration: phase?.duration || 0,
-    durationUnit: phase?.durationUnit || 'weeks',
-    status: phase?.status || 'not-started',
-    projectId: project?.id || '',
-  }
-  timelineDialog.value = true
+const handleCreateReport = () => {
+  reportForm.value.title = ''
+  reportDialog.value = true
 }
 
-const saveTimeline = () => {
-  if (!project.value) return
-
-  const timelineData = {
-    name: timelineForm.value.name,
-    description: timelineForm.value.description,
-    duration: timelineForm.value.duration,
-    durationUnit: timelineForm.value.durationUnit,
-    status: timelineForm.value.status,
-    projectId: project.value.id,
-  }
-
-  if (editingTimeline.value) {
-    updateTimelinePhase(editingTimeline.value.id, timelineData)
-  } else {
-    createTimelinePhase(timelineData)
-  }
-
-  timelineDialog.value = false
+const handleSaveReport = () => {
+  if (!project.value || !reportForm.value.title.trim()) return
+  
+  const newReport = createReport({
+    title: reportForm.value.title,
+    projectId: projectId.value,
+  })
+  
+  reportDialog.value = false
+  
+  // Auto-create first section
+  nextTick(() => {
+    if (newReport) {
+      // The SectionSidebar component will handle creating the first section
+    }
+  })
 }
 
-const regulationHeaders = [
-  { title: 'Name', key: 'name' },
-  { title: 'Description', key: 'description' },
-  { title: 'Reference', key: 'referenceLinks' },
-  { title: 'Actions', key: 'actions', sortable: false },
-]
+const handlePreviewReport = () => {
+  if (!currentReport.value?.sections) return
+  
+  previewContent.value = currentReport.value.sections.map((section: Section) => ({
+    title: section.title,
+    content: section.content,
+    updatedAt: section.updatedAt,
+  }))
+  
+  previewDialog.value = true
+}
 
 const getStatusColor = (status: string) => {
-  switch (status) {
-    case 'active':
-      return 'success'
-    case 'on-hold':
-      return 'warning'
-    case 'completed':
-      return 'info'
-    default:
-      return 'grey'
+  const colors = {
+    active: 'success',
+    'on-hold': 'warning',
+    completed: 'info'
   }
+  return colors[status as keyof typeof colors] || 'grey'
 }
 
-const getPhaseColor = (status: string) => {
-  switch (status) {
-    case 'completed':
-      return 'success'
-    case 'in-progress':
-      return 'primary'
-    case 'not-started':
-      return 'grey'
-    default:
-      return 'grey'
-  }
+const formatRelativeTime = (dateString: string): string => {
+  const date = new Date(dateString)
+  const now = new Date()
+  const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60))
+  
+  if (diffInMinutes < 1) return 'just now'
+  if (diffInMinutes < 60) return `${diffInMinutes}m ago`
+  
+  const diffInHours = Math.floor(diffInMinutes / 60)
+  if (diffInHours < 24) return `${diffInHours}h ago`
+  
+  const diffInDays = Math.floor(diffInHours / 24)
+  if (diffInDays < 7) return `${diffInDays}d ago`
+  
+  return date.toLocaleDateString()
 }
 
-const getPhaseIcon = (status: string) => {
-  switch (status) {
-    case 'completed':
-      return 'mdi-check-circle'
-    case 'in-progress':
-      return 'mdi-progress-clock'
-    case 'not-started':
-      return 'mdi-circle-outline'
-    default:
-      return 'mdi-circle'
+// Initialize with first section if available
+onMounted(() => {
+  if (currentReport.value?.sections && currentReport.value.sections.length > 0) {
+    const firstSection = currentReport.value.sections[0]
+    handleSectionSelected(firstSection)
   }
+})
+
+// Save before leaving the page
+onBeforeUnmount(() => {
+  if (hasUnsavedChanges.value && activeSection.value) {
+    handleSaveSection()
+  }
+  
+  if (saveTimeout) {
+    clearTimeout(saveTimeout)
+  }
+})
+</script>
+
+<style scoped>
+.border-e {
+  border-inline-end: thin solid rgba(var(--v-border-color), var(--v-border-opacity));
 }
 
-const getShortLink = (link: string) => {
-  // Remove protocol and www if present
-  const cleanLink = link.replace(/^(https?:\/\/)?(www\.)?/, '')
-  // Get the domain and first part of the path
-  const parts = cleanLink.split('/')
-  return parts[0] + (parts[1] ? '/...' : '')
+.border-s {
+  border-inline-start: thin solid rgba(var(--v-border-color), var(--v-border-opacity));
 }
-</script> 
+
+.border-b {
+  border-bottom: thin solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+</style> 

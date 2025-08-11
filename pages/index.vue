@@ -125,7 +125,11 @@ const {
 // Project Dialog
 const projectDialog = ref(false)
 const editingProject = ref<Project | null>(null)
-const projectForm = ref({
+const projectForm = ref<{
+  name: string
+  description: string
+  status: 'active' | 'completed' | 'on-hold'
+}>({
   name: '',
   description: '',
   status: 'active',
