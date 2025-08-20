@@ -26,31 +26,24 @@
         >
           <v-card-item>
             <v-card-title>{{ project.name }}</v-card-title>
-            <v-card-subtitle>
-              <v-chip
-                :color="getStatusColor(project.status)"
-                size="small"
-                class="mt-2"
-              >
-                {{ project.status }}
-              </v-chip>
-            </v-card-subtitle>
             <template v-slot:append>
               <v-btn
                 icon="mdi-pencil"
                 variant="text"
                 @click="openProjectDialog(project)"
+                :disabled="loading"
               />
               <v-btn
                 icon="mdi-delete"
                 variant="text"
                 color="error"
-                @click="deleteProject(project.id)"
+                @click="handleDeleteProject(project.id)"
+                :disabled="loading"
               />
             </template>
           </v-card-item>
           <v-card-text>
-            {{ project.description }}
+            {{ project.context }}
           </v-card-text>
           <v-card-actions>
             <v-spacer />
@@ -79,15 +72,20 @@
             required
           />
           <v-textarea
-            v-model="projectForm.description"
-            label="Description"
+            v-model="projectForm.context"
+            label="Context"
             auto-grow
             required
           />
           <v-select
-            v-model="projectForm.status"
-            :items="['active', 'on-hold', 'completed']"
-            label="Status"
+            v-model="projectForm.language"
+            :items="[
+              { title: 'Italian', value: 'italian' },
+              { title: 'English', value: 'english' },
+              { title: 'Spanish', value: 'spanish' },
+              { title: 'French', value: 'french' }
+            ]"
+            label="Language"
             required
           />
         </v-card-text>
@@ -103,6 +101,8 @@
           <v-btn
             color="primary"
             @click="saveProject"
+            :loading="loading"
+            :disabled="!projectForm.name.trim() || !projectForm.context.trim()"
           >
             Save
           </v-btn>
@@ -119,7 +119,8 @@ const {
   projects, 
   createProject, 
   updateProject, 
-  deleteProject 
+  deleteProject,
+  fetchProjects 
 } = useProjects()
 
 // Project Dialog
@@ -127,43 +128,68 @@ const projectDialog = ref(false)
 const editingProject = ref<Project | null>(null)
 const projectForm = ref<{
   name: string
-  description: string
-  status: 'active' | 'completed' | 'on-hold'
+  context: string
+  language: string
 }>({
   name: '',
-  description: '',
-  status: 'active',
+  context: '',
+  language: 'italian',
 })
+
+// Loading state
+const loading = ref(false)
 
 const openProjectDialog = (project?: Project) => {
   editingProject.value = project || null
   projectForm.value = {
     name: project?.name || '',
-    description: project?.description || '',
-    status: project?.status || 'active',
+    context: project?.context || '',
+    language: project?.language || 'italian',
   }
   projectDialog.value = true
 }
 
-const saveProject = () => {
-  if (editingProject.value) {
-    updateProject(editingProject.value.id, projectForm.value)
-  } else {
-    createProject(projectForm.value)
+const saveProject = async () => {
+  loading.value = true
+  try {
+    if (editingProject.value) {
+      await updateProject(editingProject.value.id, {
+        ...projectForm.value,
+        sectionIdsOrder: editingProject.value.sectionIdsOrder || []
+      })
+    } else {
+      await createProject(projectForm.value)
+    }
+    projectDialog.value = false
+  } catch (error) {
+    console.error('Failed to save project:', error)
+  } finally {
+    loading.value = false
   }
-  projectDialog.value = false
 }
 
-const getStatusColor = (status: string) => {
-  switch (status) {
-    case 'active':
-      return 'success'
-    case 'on-hold':
-      return 'warning'
-    default:
-      return 'info'
+const handleDeleteProject = async (id: string) => {
+  loading.value = true
+  try {
+    await deleteProject(id)
+  } catch (error) {
+    console.error('Failed to delete project:', error)
+  } finally {
+    loading.value = false
   }
 }
+
+// Load projects when component mounts
+onMounted(async () => {
+  loading.value = true
+  try {
+    await fetchProjects()
+  } catch (error) {
+    console.error('Failed to load projects:', error)
+  } finally {
+    loading.value = false
+  }
+})
 </script>
 
 <style scoped>

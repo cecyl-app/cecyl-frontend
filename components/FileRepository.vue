@@ -68,8 +68,8 @@
             class="file-item pa-3 d-flex align-center border-b"
           >
             <v-icon
-              :icon="getFileIcon(file.type)"
-              :color="getFileColor(file.type)"
+              :icon="getFileIcon(file.type || '')"
+              :color="getFileColor(file.type || '')"
               size="20"
               class="me-3"
             />
@@ -79,7 +79,7 @@
                 {{ file.name }}
               </div>
               <div class="text-caption text-grey">
-                {{ formatFileSize(file.size) }} • {{ formatDate(file.uploadedAt) }}
+                {{ formatFileSize(file.sizeBytes || file.size) }} • {{ formatDate(file.uploadedAt || new Date().toISOString()) }}
               </div>
             </div>
             
@@ -113,7 +113,7 @@
 </template>
 
 <script setup lang="ts">
-import type { ProjectFile } from '~/types/report'
+import type { ExtendedProjectFile } from '~/types/project'
 
 interface Props {
   projectId: string
@@ -123,7 +123,8 @@ const props = defineProps<Props>()
 
 const { 
   getProjectFiles, 
-  uploadFile, 
+  loadProjectFiles,
+  uploadFiles, 
   deleteFile, 
   downloadFile, 
   formatFileSize, 
@@ -136,6 +137,19 @@ const dropZone = ref<HTMLElement>()
 const isDragOver = ref(false)
 
 const projectFiles = computed(() => getProjectFiles(props.projectId))
+
+// Load files when component mounts or projectId changes
+onMounted(() => {
+  if (props.projectId) {
+    loadProjectFiles(props.projectId)
+  }
+})
+
+watch(() => props.projectId, (newProjectId) => {
+  if (newProjectId) {
+    loadProjectFiles(newProjectId)
+  }
+})
 
 const handleUploadClick = () => {
   fileInput.value?.click()
@@ -189,13 +203,24 @@ const handleFiles = async (files: File[]) => {
     return true
   })
   
-  // Upload files
-  for (const file of validFiles) {
-    try {
-      await uploadFile(file, props.projectId)
-    } catch (error) {
-      console.error(`Failed to upload ${file.name}:`, error)
+  if (validFiles.length === 0) {
+    console.warn('No valid files to upload')
+    return
+  }
+  
+  // Upload all files in a single request
+  try {
+    const uploadedFiles = await uploadFiles(validFiles, props.projectId)
+    
+    // Show success message
+    if (uploadedFiles.length > 0) {
+      console.log(`Successfully uploaded ${uploadedFiles.length} file(s)`)
+      // Optionally trigger a refresh of the file list
+      await loadProjectFiles(props.projectId)
     }
+  } catch (error) {
+    console.error('Failed to upload files:', error)
+    // Could add user-friendly error notification here
   }
 }
 
@@ -203,9 +228,13 @@ const handleDownload = (fileId: string) => {
   downloadFile(fileId)
 }
 
-const handleDelete = (fileId: string) => {
+const handleDelete = async (fileId: string) => {
   if (confirm('Are you sure you want to delete this file?')) {
-    deleteFile(fileId)
+    try {
+      await deleteFile(fileId, props.projectId)
+    } catch (error) {
+      console.error('Failed to delete file:', error)
+    }
   }
 }
 

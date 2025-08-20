@@ -1,126 +1,338 @@
-import type { Project, Requirement, Regulation, TimelinePhase } from '~/types/project'
+import axios, { type AxiosResponse } from 'axios'
+import type {
+  Project,
+  Section,
+  ProjectFile,
+  FileUploadResponse,
+  Requirement,
+  Regulation,
+  TimelinePhase
+} from '~/types/project'
 
-// Mock data
-const mockProjects: Project[] = [
-  {
-    id: '1',
-    name: 'COVID-19 Vaccine Development',
-    description: 'Development of a new mRNA-based COVID-19 vaccine',
-    status: 'active',
-    createdAt: '2024-01-15',
-    timeline: [
-      {
-        id: '1',
-        name: 'Research & Development',
-        description: 'Initial research and development phase',
-        duration: 12,
-        durationUnit: 'weeks',
-        status: 'completed',
-        projectId: '1',
-      },
-      {
-        id: '2',
-        name: 'Pre-clinical Trials',
-        description: 'Animal testing and safety assessment',
-        duration: 8,
-        durationUnit: 'weeks',
-        status: 'completed',
-        projectId: '1',
-      },
-      {
-        id: '3',
-        name: 'Phase I Clinical Trials',
-        description: 'Safety testing in healthy volunteers',
-        duration: 6,
-        durationUnit: 'weeks',
-        status: 'in-progress',
-        projectId: '1',
-      },
-    ],
-  },
-  {
-    id: '2',
-    name: 'Cancer Drug Research',
-    description: 'Research and development of new cancer treatment drugs',
-    status: 'active',
-    createdAt: '2024-02-20',
-  },
-  {
-    id: '3',
-    name: 'Diabetes Medication',
-    description: 'Development of new insulin delivery system',
-    status: 'on-hold',
-    createdAt: '2024-03-10',
-  },
-]
+// Base API URL from environment variable
+const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:6001'
 
-const mockRequirements: Requirement[] = [
-  {
-    id: '1',
-    title: 'Clinical Trial Protocol',
-    description: 'Detailed protocol for Phase III clinical trials including patient selection criteria, dosage regimen, and monitoring procedures.',
-    projectId: '1',
-    createdAt: '2024-01-16',
-    updatedAt: '2024-01-16',
+// Create axios instance
+const apiClient = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
   },
-  {
-    id: '2',
-    title: 'Manufacturing Process',
-    description: 'Standard operating procedures for vaccine manufacturing including quality control measures and batch testing protocols.',
-    projectId: '1',
-    createdAt: '2024-01-17',
-    updatedAt: '2024-01-17',
-  },
-]
+  timeout: 10000, // 10 seconds timeout
+})
 
-const mockRegulations: Regulation[] = [
-  {
-    id: '1',
-    name: 'EMA Regulation N. 21',
-    description: 'Good Manufacturing Practice (GMP) guidelines for pharmaceutical products',
-    referenceLinks: ['www.ema.it/rule21', 'www.fda.gov/regulations/guidelines/21'],
-    projectId: '1',
+// Add request interceptor for logging
+apiClient.interceptors.request.use(
+  (config) => {
+    console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`)
+    return config
   },
-  {
-    id: '2',
-    name: 'Clean Room Standards',
-    description: 'All pharmaceutical instruments need to be cleaned before use according to ISO 14644-1 standards',
-    referenceLinks: ['www.iso.org/14644-1', 'www.gov.uk/iso14644'],
-    projectId: '1',
+  (error) => {
+    console.error('API Request Error:', error)
+    return Promise.reject(error)
+  }
+)
+
+// Add response interceptor for error handling
+apiClient.interceptors.response.use(
+  (response: AxiosResponse) => {
+    console.log(`API Response: ${response.status} ${response.config.url}`)
+    return response
   },
-]
+  (error) => {
+    console.error('API Response Error:', error.response?.data || error.message)
+    return Promise.reject(error)
+  }
+)
 
 export const useProjects = () => {
-  const projects = ref<Project[]>(mockProjects)
-  const requirements = ref<Requirement[]>(mockRequirements)
-  const regulations = ref<Regulation[]>(mockRegulations)
+  const projects = ref<Project[]>([])
+  const requirements = ref<Requirement[]>([])
+  const regulations = ref<Regulation[]>([])
 
-  // Project CRUD
-  const createProject = (project: Omit<Project, 'id' | 'createdAt'>) => {
-    const newProject: Project = {
-      ...project,
-      id: Date.now().toString(),
-      createdAt: new Date().toISOString(),
-    }
-    projects.value.push(newProject)
-    return newProject
-  }
-
-  const updateProject = (id: string, project: Partial<Project>) => {
-    const index = projects.value.findIndex(p => p.id === id)
-    if (index !== -1) {
-      projects.value[index] = { ...projects.value[index], ...project }
+  // API Helper function
+  const apiCall = async <T>(endpoint: string, options: any = {}): Promise<T> => {
+    try {
+      const response = await apiClient.request<T>({
+        url: endpoint,
+        ...options,
+      })
+      return response.data
+    } catch (error) {
+      console.error(`API call failed for ${endpoint}:`, error)
+      throw error
     }
   }
 
-  const deleteProject = (id: string) => {
-    projects.value = projects.value.filter(p => p.id !== id)
-    // Also delete related requirements and regulations
-    requirements.value = requirements.value.filter(r => r.projectId !== id)
-    regulations.value = regulations.value.filter(r => r.projectId !== id)
+  // Project CRUD Operations
+  const createProject = async (projectData: { name: string; context: string; language?: string }) => {
+    try {
+      const response = await apiCall<Project>('/projects', {
+        method: 'POST',
+        data: {
+          name: projectData.name,
+          context: projectData.context,
+          language: projectData.language || 'italian'
+        },
+      })
+
+      projects.value.push(response)
+      return response
+    } catch (error) {
+      console.error('Failed to create project:', error)
+      throw error
+    }
   }
 
-  // Requirement CRUD
+  const updateProject = async (id: string, projectData: { name: string; context: string; language: string; sectionIdsOrder: string[] }) => {
+    try {
+      const response = await apiCall<Project>(`/projects/${id}`, {
+        method: 'PUT',
+        data: projectData,
+      })
+
+      const index = projects.value.findIndex(p => p.id === id)
+      if (index !== -1) {
+        projects.value[index] = response
+      }
+
+      return response
+    } catch (error) {
+      console.error('Failed to update project:', error)
+      throw error
+    }
+  }
+
+  const fetchProjects = async () => {
+    try {
+      const response = await apiCall<Project[]>('/projects', {
+        method: 'GET',
+      })
+      projects.value = response
+      return response
+    } catch (error) {
+      console.error('Failed to fetch projects:', error)
+      throw error
+    }
+  }
+
+  const fetchProjectById = async (id: string) => {
+    try {
+      const response = await apiCall<Project>(`/projects/${id}`, {
+        method: 'GET',
+      })
+
+      const index = projects.value.findIndex(p => p.id === id)
+      if (index !== -1) {
+        projects.value[index] = response
+      } else {
+        projects.value.push(response)
+      }
+
+      return response
+    } catch (error) {
+      console.error('Failed to fetch project details:', error)
+      throw error
+    }
+  }
+
+  const deleteProject = async (id: string) => {
+    try {
+      await apiCall(`/projects/${id}`, {
+        method: 'DELETE',
+      })
+
+      projects.value = projects.value.filter(p => p.id !== id)
+      // Also delete related requirements and regulations
+      requirements.value = requirements.value.filter(r => r.projectId !== id)
+      regulations.value = regulations.value.filter(r => r.projectId !== id)
+    } catch (error) {
+      console.error('Failed to delete project:', error)
+      throw error
+    }
+  }
+
+  // Section CRUD Operations
+  const createSection = async (projectId: string, sectionData: { name: string }) => {
+    try {
+      const response = await apiCall<Section>(`/projects/${projectId}/sections`, {
+        method: 'POST',
+        data: {
+          name: sectionData.name
+        },
+      })
+
+      // Update the local project with the new section
+      const projectIndex = projects.value.findIndex(p => p.id === projectId)
+      if (projectIndex !== -1) {
+        if (!projects.value[projectIndex].sections) {
+          projects.value[projectIndex].sections = []
+        }
+        projects.value[projectIndex].sections!.push(response)
+      }
+
+      return response
+    } catch (error) {
+      console.error('Failed to create section:', error)
+      throw error
+    }
+  }
+
+  const updateSection = async (projectId: string, sectionId: string, sectionData: { name: string }) => {
+    try {
+      const response = await apiCall<Section>(`/projects/${projectId}/sections/${sectionId}`, {
+        method: 'PUT',
+        data: {
+          name: sectionData.name
+        },
+      })
+
+      // Update the local project section
+      const projectIndex = projects.value.findIndex(p => p.id === projectId)
+      if (projectIndex !== -1 && projects.value[projectIndex].sections) {
+        const sectionIndex = projects.value[projectIndex].sections!.findIndex(s => s.id === sectionId)
+        if (sectionIndex !== -1) {
+          projects.value[projectIndex].sections![sectionIndex] = response
+        }
+      }
+
+      return response
+    } catch (error) {
+      console.error('Failed to update section:', error)
+      throw error
+    }
+  }
+
+  const deleteSection = async (projectId: string, sectionId: string) => {
+    try {
+      await apiCall(`/projects/${projectId}/sections/${sectionId}`, {
+        method: 'DELETE',
+      })
+
+      // Remove the section from local project
+      const projectIndex = projects.value.findIndex(p => p.id === projectId)
+      if (projectIndex !== -1 && projects.value[projectIndex].sections) {
+        projects.value[projectIndex].sections = projects.value[projectIndex].sections!.filter(s => s.id !== sectionId)
+
+        // Also update sectionIdsOrder
+        if (projects.value[projectIndex].sectionIdsOrder) {
+          projects.value[projectIndex].sectionIdsOrder = projects.value[projectIndex].sectionIdsOrder.filter(id => id !== sectionId)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to delete section:', error)
+      throw error
+    }
+  }
+
+  const askAIForSection = async (projectId: string, sectionId: string, prompt: string) => {
+    try {
+      const response = await apiCall<{ output: string }>(`/projects/${projectId}/sections/${sectionId}/ask`, {
+        method: 'POST',
+        data: {
+          prompt: prompt
+        },
+      })
+
+      return response.output
+    } catch (error) {
+      console.error('Failed to get AI response for section:', error)
+      throw error
+    }
+  }
+
+  const improveSectionContent = async (projectId: string, sectionId: string, content: string) => {
+    try {
+      const response = await apiCall(`/projects/${projectId}/sections/${sectionId}/improve`, {
+        method: 'POST',
+        data: {
+          prompt: content
+        },
+      })
+
+      // Update the section content in the local project if needed
+      const projectIndex = projects.value.findIndex(p => p.id === projectId)
+      if (projectIndex !== -1 && projects.value[projectIndex].sections) {
+        const sectionIndex = projects.value[projectIndex].sections!.findIndex(s => s.id === sectionId)
+        if (sectionIndex !== -1) {
+          // Add new history entry
+          const newHistoryItem = {
+            content: content,
+            type: 'user_edit'
+          }
+          projects.value[projectIndex].sections![sectionIndex].history.push(newHistoryItem)
+        }
+      }
+
+      return response
+    } catch (error) {
+      console.error('Failed to improve section content:', error)
+      throw error
+    }
+  }
+
+  // File Management Operations
+  const fetchProjectFiles = async (projectId: string) => {
+    try {
+      const response = await apiCall<ProjectFile[]>(`/projects/${projectId}/search-files`, {
+        method: 'GET',
+      })
+      return response
+    } catch (error) {
+      console.error('Failed to fetch project files:', error)
+      throw error
+    }
+  }
+
+  const uploadProjectFiles = async (projectId: string, files: File[]) => {
+    try {
+      // Create FormData for file upload
+      const formData = new FormData()
+      for (let i = 0; i < files.length; i++) {
+        formData.append(`search_file_${i}`, files[i])
+      }
+
+      const response = await apiCall<FileUploadResponse>(`/projects/${projectId}/search-files`, {
+        method: 'POST',
+        data: formData,
+        headers: {
+          // Remove Content-Type to let browser set it with boundary for FormData
+          'Content-Type': undefined,
+        },
+      })
+
+      return response.files
+    } catch (error) {
+      console.error('Failed to upload files:', error)
+      throw error
+    }
+  }
+
+  const deleteProjectFile = async (projectId: string, fileId: string) => {
+    try {
+      await apiCall(`/projects/${projectId}/search-files/${fileId}`, {
+        method: 'DELETE',
+      })
+    } catch (error) {
+      console.error('Failed to delete file:', error)
+      throw error
+    }
+  }
+
+  // Getters and utility functions
+  const getProjectById = (id: string) => {
+    return projects.value.find(project => project.id === id)
+  }
+
+  const getProjectRequirements = (projectId: string) => {
+    return requirements.value.filter(req => req.projectId === projectId)
+  }
+
+  const getProjectRegulations = (projectId: string) => {
+    return regulations.value.filter(reg => reg.projectId === projectId)
+  }
+
+  // Legacy functions for backward compatibility (using mock data for now)
   const createRequirement = (requirement: Omit<Requirement, 'id' | 'createdAt' | 'updatedAt'>) => {
     const newRequirement: Requirement = {
       ...requirement,
@@ -147,7 +359,6 @@ export const useProjects = () => {
     requirements.value = requirements.value.filter(r => r.id !== id)
   }
 
-  // Regulation CRUD
   const createRegulation = (regulation: Omit<Regulation, 'id'>) => {
     const newRegulation: Regulation = {
       ...regulation,
@@ -168,64 +379,50 @@ export const useProjects = () => {
     regulations.value = regulations.value.filter(r => r.id !== id)
   }
 
-  // Timeline CRUD
   const createTimelinePhase = (phase: Omit<TimelinePhase, 'id'>) => {
     const newPhase: TimelinePhase = {
       ...phase,
       id: Date.now().toString(),
     }
-    const project = projects.value.find(p => p.id === phase.projectId)
-    if (project) {
-      if (!project.timeline) {
-        project.timeline = []
-      }
-      project.timeline.push(newPhase)
-    }
+    // Note: Timeline functionality may need backend API support
     return newPhase
   }
 
   const updateTimelinePhase = (id: string, phase: Partial<TimelinePhase>) => {
-    const project = projects.value.find(p => p.timeline?.some(t => t.id === id))
-    if (project?.timeline) {
-      const index = project.timeline.findIndex(t => t.id === id)
-      if (index !== -1) {
-        project.timeline[index] = { ...project.timeline[index], ...phase }
-      }
-    }
+    // Note: Timeline functionality may need backend API support
   }
 
   const deleteTimelinePhase = (id: string) => {
-    const project = projects.value.find(p => p.timeline?.some(t => t.id === id))
-    if (project?.timeline) {
-      project.timeline = project.timeline.filter(t => t.id !== id)
-    }
+    // Note: Timeline functionality may need backend API support
   }
 
   const getProjectTimeline = (projectId: string) => {
-    const project = projects.value.find(p => p.id === projectId)
-    return project?.timeline || []
-  }
-
-  // Getters
-  const getProjectById = (id: string) => {
-    return projects.value.find(project => project.id === id)
-  }
-
-  const getProjectRequirements = (projectId: string) => {
-    return requirements.value.filter(req => req.projectId === projectId)
-  }
-
-  const getProjectRegulations = (projectId: string) => {
-    return regulations.value.filter(reg => reg.projectId === projectId)
+    // Note: Timeline functionality may need backend API support
+    return []
   }
 
   return {
     projects,
     requirements,
     regulations,
+    // Main project API functions
     createProject,
     updateProject,
     deleteProject,
+    fetchProjects,
+    fetchProjectById,
+    getProjectById,
+    // Section API functions
+    createSection,
+    updateSection,
+    deleteSection,
+    askAIForSection,
+    improveSectionContent,
+    // File management API functions
+    fetchProjectFiles,
+    uploadProjectFiles,
+    deleteProjectFile,
+    // Legacy functions for compatibility
     createRequirement,
     updateRequirement,
     deleteRequirement,
@@ -236,7 +433,6 @@ export const useProjects = () => {
     updateTimelinePhase,
     deleteTimelinePhase,
     getProjectTimeline,
-    getProjectById,
     getProjectRequirements,
     getProjectRegulations,
   }

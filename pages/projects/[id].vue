@@ -11,9 +11,11 @@
           class="d-flex flex-column border-e"
         >
           <SectionSidebar
-            v-if="currentReport"
-            :report-id="currentReport.id"
+            v-if="project || loading"
+            :project-id="projectId"
+            :project="project"
             :active-section="activeSection"
+            :loading="loading"
             @section-selected="handleSectionSelected"
           />
           
@@ -82,7 +84,6 @@
               <MarkdownEditor
                 v-model="sectionContent"
                 :title="activeSection.title"
-                @change="handleContentChange"
               />
             </div>
           </div>
@@ -113,13 +114,14 @@
             <AiEnhancement
               :section-id="activeSection?.id"
               :section-content="sectionContent"
+              :project-id="projectId"
               @content-enhanced="handleContentEnhanced"
             />
           </v-sheet>
           
           <!-- File Repository Panel -->
           <v-sheet class="flex-grow-1" elevation="0">
-            <FileRepository v-if="project" :project-id="project.id" />
+            <FileRepository v-if="projectId" :project-id="projectId" />
           </v-sheet>
         </v-col>
       </v-row>
@@ -217,7 +219,14 @@ const route = useRoute()
 const router = useRouter()
 
 // Composables
-const { getProjectById } = useProjects()
+const { 
+  getProjectById, 
+  fetchProjectById, 
+  improveSectionContent,
+  createSection,
+  updateSection: updateProjectSection,
+  deleteSection
+} = useProjects()
 const { 
   getProjectReports, 
   createReport, 
@@ -227,9 +236,60 @@ const {
 
 // Reactive data
 const projectId = computed(() => Array.isArray(route.params.id) ? route.params.id[0] : route.params.id)
-const project = computed<Project | undefined>(() => getProjectById(projectId.value))
-const projectReports = computed(() => getProjectReports(projectId.value))
-const currentReport = computed(() => projectReports.value[0]) // Use first report for now
+const loading = ref(false)
+
+// Use local ref for project but keep it synchronized with global state
+const project = ref<Project | undefined>()
+
+// Watch for changes in the global project state and sync local ref
+watch(
+  () => getProjectById(projectId.value),
+  (globalProject) => {
+    if (globalProject) {
+      project.value = globalProject
+      console.log('Project synced from global state:', globalProject.name, 'sections:', globalProject.sections?.length || 0)
+    }
+  },
+  { immediate: true, deep: true }
+)
+
+// Convert API sections to report sections for compatibility
+const currentReport = computed(() => {
+  console.log('CurrentReport computed - project.value:', {
+    hasProject: !!project.value,
+    projectName: project.value?.name,
+    hasSections: !!project.value?.sections,
+    sectionsIsArray: Array.isArray(project.value?.sections),
+    sectionsLength: project.value?.sections?.length || 0,
+    sections: project.value?.sections?.map(s => ({ id: s.id, name: s.name })) || []
+  })
+  
+  if (!project.value?.sections || !Array.isArray(project.value.sections)) {
+    console.log('CurrentReport: returning null - no valid sections')
+    return null
+  }
+  
+  const proj = project.value
+  const report = {
+    id: `report-${proj.id}`,
+    title: `${proj.name} Report`,
+    projectId: proj.id,
+    sections: proj.sections!.map((section, index) => ({
+      id: section.id,
+      title: section.name,
+      content: section.history[section.history.length - 1]?.content || '',
+      order: index,
+      reportId: `report-${proj.id}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    })),
+    createdAt: proj.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }
+  
+  console.log('CurrentReport: returning report with sections:', report.sections.length)
+  return report
+})
 
 const activeSection = ref<Section | null>(null)
 const sectionContent = ref('')
@@ -260,33 +320,27 @@ const handleSectionSelected = (section: Section) => {
   originalContent.value = section.content
 }
 
-const handleContentChange = (content: string) => {
-  sectionContent.value = content
-  
-  // Auto-save after 2 seconds of inactivity
-  if (saveTimeout) {
-    clearTimeout(saveTimeout)
-  }
-  
-  saveTimeout = setTimeout(() => {
-    if (hasUnsavedChanges.value) {
-      handleSaveSection()
-    }
-  }, 2000)
-}
 
-const handleSaveSection = () => {
-  if (!activeSection.value || !hasUnsavedChanges.value) return
+const handleSaveSection = async () => {
+  if (!activeSection.value || !hasUnsavedChanges.value || !projectId.value) return
   
-  updateSection(activeSection.value.id, {
-    content: sectionContent.value
-  })
-  
-  originalContent.value = sectionContent.value
-  
-  if (saveTimeout) {
-    clearTimeout(saveTimeout)
-    saveTimeout = null
+  try {
+    // Use the new API to improve section content
+    await improveSectionContent(projectId.value, activeSection.value.id, sectionContent.value)
+    
+    // Also update the reports system for compatibility
+    updateSection(activeSection.value.id, {
+      content: sectionContent.value
+    })
+    
+    originalContent.value = sectionContent.value
+    
+    if (saveTimeout) {
+      clearTimeout(saveTimeout)
+      saveTimeout = null
+    }
+  } catch (error) {
+    console.error('Failed to save section:', error)
   }
 }
 
@@ -355,11 +409,29 @@ const formatRelativeTime = (dateString: string): string => {
   return date.toLocaleDateString()
 }
 
-// Initialize with first section if available
-onMounted(() => {
-  if (currentReport.value?.sections && currentReport.value.sections.length > 0) {
-    const firstSection = currentReport.value.sections[0]
-    handleSectionSelected(firstSection)
+// Load project and initialize with first section if available
+onMounted(async () => {
+  loading.value = true
+  try {
+    // Fetch project data - this will update the global projects state
+    const loadedProject = await fetchProjectById(projectId.value)
+    
+    // Update local ref immediately and let watcher handle sync
+    project.value = loadedProject
+    
+    // Wait for reactivity to update, then select first section
+    await nextTick()
+    
+    if (currentReport.value?.sections && currentReport.value.sections.length > 0) {
+      const firstSection = currentReport.value.sections[0]
+      handleSectionSelected(firstSection)
+    }
+  } catch (error) {
+    console.error('Failed to load project:', error)
+    // Redirect to projects page if project not found
+    await router.push('/')
+  } finally {
+    loading.value = false
   }
 })
 

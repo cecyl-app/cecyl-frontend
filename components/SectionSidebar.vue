@@ -29,11 +29,34 @@
     </v-card-title>
     
     <v-card-text class="pa-0">
-      <!-- Report Header -->
-      <div v-if="report" class="pa-4 border-b">
-        <h3 class="text-h6 mb-2">{{ report.title }}</h3>
+      <!-- Project/Report Header -->
+      <div v-if="loading" class="pa-4 border-b">
+        <!-- Loading skeleton for header -->
+        <v-skeleton-loader
+          type="heading"
+          height="24"
+          width="60%"
+          class="mb-2"
+        />
+        <v-skeleton-loader
+          type="text"
+          height="12"
+          width="80%"
+          class="mb-1"
+        />
+        <v-skeleton-loader
+          type="text"
+          height="12"
+          width="40%"
+        />
+      </div>
+      
+      <div v-else-if="project || report" class="pa-4 border-b">
+        <h3 class="text-h6 mb-2">
+          {{ isProjectMode ? project?.name : report?.title }}
+        </h3>
         <div class="text-caption text-grey">
-          Last updated: {{ formatDate(report.updatedAt) }}
+          Last updated: {{ formatDate((project?.createdAt || report?.updatedAt) || new Date().toISOString()) }}
         </div>
         <div class="text-caption text-grey">
           {{ sections.length }} {{ sections.length === 1 ? 'section' : 'sections' }}
@@ -41,7 +64,15 @@
       </div>
       
       <!-- Download Button -->
-      <div class="pa-4 border-b">
+      <div v-if="loading" class="pa-4 border-b">
+        <v-skeleton-loader
+          type="button"
+          height="36"
+          width="100%"
+        />
+      </div>
+      
+      <div v-else class="pa-4 border-b">
         <v-btn
           color="primary"
           variant="outlined"
@@ -55,80 +86,120 @@
       
       <!-- Section List -->
       <div class="section-list">
-        <div
-          v-for="(section, index) in sections"
-          :key="section.id"
-          class="section-item"
-          :class="{ 'section-active': activeSection?.id === section.id }"
-          @click="handleSectionClick(section)"
-        >
-          <div class="d-flex align-center pa-3">
-            <div class="section-number">
-              {{ index + 1 }}
-            </div>
-            <div class="flex-grow-1 ml-3">
-              <div class="text-body-2 font-weight-medium">
-                {{ section.title }}
-              </div>
-              <div class="text-caption text-grey mt-1">
-                Updated {{ formatRelativeTime(section.updatedAt) }}
-              </div>
-            </div>
-            <v-menu>
-              <template v-slot:activator="{ props: menuProps }">
-                <v-btn
-                  icon="mdi-dots-vertical"
-                  variant="text"
-                  size="x-small"
-                  v-bind="menuProps"
-                  @click.stop
-                />
-              </template>
-              <v-list density="compact">
-                <v-list-item @click="handleEditSection(section)">
-                  <v-list-item-title>
-                    <v-icon start size="small">mdi-pencil</v-icon>
-                    Edit
-                  </v-list-item-title>
-                </v-list-item>
-                <v-list-item @click="handleMoveUp(section)" :disabled="index === 0">
-                  <v-list-item-title>
-                    <v-icon start size="small">mdi-arrow-up</v-icon>
-                    Move Up
-                  </v-list-item-title>
-                </v-list-item>
-                <v-list-item @click="handleMoveDown(section)" :disabled="index === sections.length - 1">
-                  <v-list-item-title>
-                    <v-icon start size="small">mdi-arrow-down</v-icon>
-                    Move Down
-                  </v-list-item-title>
-                </v-list-item>
-                <v-divider />
-                <v-list-item @click="handleDeleteSection(section)" class="text-error">
-                  <v-list-item-title>
-                    <v-icon start size="small">mdi-delete</v-icon>
-                    Delete
-                  </v-list-item-title>
-                </v-list-item>
-              </v-list>
-            </v-menu>
-          </div>
-        </div>
-        
-        <!-- Empty State -->
-        <div v-if="sections.length === 0" class="text-center pa-8">
-          <v-icon size="64" color="grey-lighten-2" class="mb-4">
-            mdi-file-document-outline
-          </v-icon>
-          <p class="text-body-2 text-grey mb-4">No sections yet</p>
-          <v-btn
-            color="primary"
-            prepend-icon="mdi-plus"
-            @click="handleAddSection"
+        <!-- Loading Skeleton -->
+        <template v-if="loading">
+          <div
+            v-for="i in 3"
+            :key="`skeleton-${i}`"
+            class="section-skeleton pa-3 border-b"
           >
-            Add First Section
-          </v-btn>
-        </div>
+            <div class="d-flex align-center">
+              <v-skeleton-loader
+                type="avatar"
+                height="24"
+                width="24"
+                class="flex-shrink-0"
+              />
+              <div class="flex-grow-1 ml-3">
+                <v-skeleton-loader
+                  type="text"
+                  height="16"
+                  width="70%"
+                  class="mb-1"
+                />
+                <v-skeleton-loader
+                  type="text"
+                  height="12"
+                  width="40%"
+                />
+              </div>
+              <v-skeleton-loader
+                type="button"
+                height="20"
+                width="20"
+                class="ml-2"
+              />
+            </div>
+          </div>
+        </template>
+        
+        <!-- Actual Sections -->
+        <template v-else>
+          <div
+            v-for="(section, index) in sections"
+            :key="section.id"
+            class="section-item"
+            :class="{ 'section-active': activeSection?.id === section.id }"
+            @click="handleSectionClick(section)"
+          >
+            <div class="d-flex align-center pa-3">
+              <div class="section-number">
+                {{ index + 1 }}
+              </div>
+              <div class="flex-grow-1 ml-3">
+                <div class="text-body-2 font-weight-medium">
+                  {{ section.title }}
+                </div>
+                <div class="text-caption text-grey mt-1">
+                  Updated {{ formatRelativeTime(section.updatedAt) }}
+                </div>
+              </div>
+              <v-menu>
+                <template v-slot:activator="{ props: menuProps }">
+                  <v-btn
+                    icon="mdi-dots-vertical"
+                    variant="text"
+                    size="x-small"
+                    v-bind="menuProps"
+                    @click.stop
+                  />
+                </template>
+                <v-list density="compact">
+                  <v-list-item @click="handleEditSection(section)">
+                    <v-list-item-title>
+                      <v-icon start size="small">mdi-pencil</v-icon>
+                      Edit
+                    </v-list-item-title>
+                  </v-list-item>
+                  <v-list-item @click="handleMoveUp(section)" :disabled="index === 0">
+                    <v-list-item-title>
+                      <v-icon start size="small">mdi-arrow-up</v-icon>
+                      Move Up
+                    </v-list-item-title>
+                  </v-list-item>
+                  <v-list-item @click="handleMoveDown(section)" :disabled="index === sections.length - 1">
+                    <v-list-item-title>
+                      <v-icon start size="small">mdi-arrow-down</v-icon>
+                      Move Down
+                    </v-list-item-title>
+                  </v-list-item>
+                  <v-divider />
+                  <v-list-item @click="handleDeleteSection(section)" class="text-error">
+                    <v-list-item-title>
+                      <v-icon start size="small">mdi-delete</v-icon>
+                      Delete
+                    </v-list-item-title>
+                  </v-list-item>
+                </v-list>
+              </v-menu>
+            </div>
+          </div>
+          
+          <!-- Empty State -->
+          <div v-if="sections.length === 0" class="text-center pa-8">
+            <v-icon size="64" color="grey-lighten-2" class="mb-4">
+              mdi-file-document-outline
+            </v-icon>
+            <p class="text-body-2 text-grey mb-4">No sections yet</p>
+            <v-btn
+              color="primary"
+              prepend-icon="mdi-plus"
+              @click="handleAddSection"
+            >
+              Add First Section
+            </v-btn>
+          </div>
+        </template>
       </div>
     </v-card-text>
     
@@ -168,10 +239,14 @@
 
 <script setup lang="ts">
 import type { Section, Report } from '~/types/report'
+import type { Project, Section as ProjectSection } from '~/types/project'
 
 interface Props {
-  reportId: string
+  reportId?: string
+  projectId?: string
+  project?: Project | null
   activeSection?: Section | null
+  loading?: boolean
 }
 
 interface Emits {
@@ -181,17 +256,64 @@ interface Emits {
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
+// Import both systems for compatibility
 const { 
   getReportById, 
   getReportSections, 
-  createSection, 
-  updateSection, 
-  deleteSection, 
+  createSection: createReportSection, 
+  updateSection: updateReportSection, 
+  deleteSection: deleteReportSection, 
   downloadReport 
 } = useReports()
 
-const report = computed(() => getReportById(props.reportId))
-const sections = computed(() => getReportSections(props.reportId))
+const {
+  getProjectById,
+  createSection: createProjectSection,
+  updateSection: updateProjectSection,
+  deleteSection: deleteProjectSection
+} = useProjects()
+
+// Determine which system to use
+const isProjectMode = computed(() => !!props.projectId)
+const project = computed(() => props.project || (props.projectId ? getProjectById(props.projectId) : null))
+const report = computed(() => props.reportId ? getReportById(props.reportId) : null)
+
+// Get sections from the appropriate source
+const sections = computed(() => {
+  if (isProjectMode.value && project.value?.sections) {
+    // Convert project sections to report section format for compatibility
+    return project.value.sections.map((section: ProjectSection, index: number) => ({
+      id: section.id,
+      title: section.name,
+      content: section.history[section.history.length - 1]?.content || '',
+      order: index,
+      reportId: `project-${project.value!.id}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }))
+  } else if (props.reportId) {
+    return getReportSections(props.reportId)
+  }
+  return []
+})
+
+// Debug: Watch for changes in project and sections
+watch(
+  () => [project.value, sections.value, project.value?.sections],
+  ([newProject, newSections, projectSections]) => {
+    console.log('SectionSidebar Debug - State Update:', {
+      timestamp: new Date().toISOString(),
+      isProjectMode: isProjectMode.value,
+      projectId: props.projectId,
+      hasProject: !!newProject,
+      projectSectionsCount: Array.isArray(projectSections) ? projectSections.length : 0,
+      convertedSectionsCount: Array.isArray(newSections) ? newSections.length : 0,
+      projectSections: Array.isArray(projectSections) ? projectSections.map((s: any) => ({ id: s.id, name: s.name })) : [],
+      convertedSections: Array.isArray(newSections) ? newSections.map((s: any) => ({ id: s.id, title: s.title })) : []
+    })
+  },
+  { immediate: true, deep: true }
+)
 
 // Section Dialog
 const sectionDialog = ref(false)
@@ -220,65 +342,129 @@ const handleEditSection = (section: Section) => {
   sectionDialog.value = true
 }
 
-const handleSaveSection = () => {
+const handleSaveSection = async () => {
   if (!sectionForm.value.title.trim()) return
   
-  if (editingSection.value) {
-    // Update existing section
-    updateSection(editingSection.value.id, {
-      title: sectionForm.value.title,
-    })
-  } else {
-    // Create new section
-    const newOrder = sections.value.length + 1
-    const newSection = createSection({
-      title: sectionForm.value.title,
-      content: `# ${sectionForm.value.title}\n\nStart writing your content here...`,
-      order: newOrder,
-      reportId: props.reportId,
-    })
-    
-    if (newSection) {
-      emit('section-selected', newSection)
+  try {
+    if (editingSection.value) {
+      // Update existing section
+      if (isProjectMode.value && props.projectId) {
+        await updateProjectSection(props.projectId, editingSection.value.id, {
+          name: sectionForm.value.title
+        })
+        console.log('Section updated successfully')
+      } else if (props.reportId) {
+        updateReportSection(editingSection.value.id, {
+          title: sectionForm.value.title,
+        })
+      }
+    } else {
+      // Create new section
+      if (isProjectMode.value && props.projectId) {
+        const newSection = await createProjectSection(props.projectId, {
+          name: sectionForm.value.title
+        })
+        
+        console.log('New section created:', newSection)
+        
+        if (newSection) {
+          // The reactive state should automatically update due to useProjects managing global state
+          // Convert to report section format for emission
+          const reportSection = {
+            id: newSection.id,
+            title: newSection.name,
+            content: '',
+            order: sections.value.length,
+            reportId: `project-${props.projectId}`,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          }
+          
+          // Wait for next tick to ensure reactive state is updated
+          await nextTick()
+          emit('section-selected', reportSection)
+        }
+      } else if (props.reportId) {
+        const newOrder = sections.value.length + 1
+        const newSection = createReportSection({
+          title: sectionForm.value.title,
+          content: `# ${sectionForm.value.title}\n\nStart writing your content here...`,
+          order: newOrder,
+          reportId: props.reportId,
+        })
+        
+        if (newSection) {
+          emit('section-selected', newSection)
+        }
+      }
     }
+    
+    sectionDialog.value = false
+  } catch (error) {
+    console.error('Failed to save section:', error)
   }
-  
-  sectionDialog.value = false
 }
 
-const handleDeleteSection = (section: Section) => {
+const handleDeleteSection = async (section: Section) => {
   if (confirm(`Are you sure you want to delete "${section.title}"?`)) {
-    deleteSection(section.id)
-    
-    // If this was the active section, clear the selection
-    if (props.activeSection?.id === section.id) {
-      const remainingSections = sections.value.filter(s => s.id !== section.id)
-      if (remainingSections.length > 0) {
-        emit('section-selected', remainingSections[0])
+    try {
+      if (isProjectMode.value && props.projectId) {
+        await deleteProjectSection(props.projectId, section.id)
+        console.log('Section deleted successfully:', section.id)
+      } else if (props.reportId) {
+        deleteReportSection(section.id)
       }
+      
+      // Wait for reactivity to update
+      await nextTick()
+      
+      // If this was the active section, select another section
+      if (props.activeSection?.id === section.id) {
+        const remainingSections = sections.value.filter((s: Section) => s.id !== section.id)
+        if (remainingSections.length > 0) {
+          emit('section-selected', remainingSections[0])
+        } else {
+          // No sections left, emit null to clear selection
+          emit('section-selected', null as any)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to delete section:', error)
     }
   }
 }
 
 const handleMoveUp = (section: Section) => {
-  const currentIndex = sections.value.findIndex(s => s.id === section.id)
+  const currentIndex = sections.value.findIndex((s: Section) => s.id === section.id)
   if (currentIndex > 0) {
     const targetSection = sections.value[currentIndex - 1]
     
-    // Swap orders
-    updateSection(section.id, { order: targetSection.order })
-    updateSection(targetSection.id, { order: section.order })
+    if (isProjectMode.value && props.projectId) {
+      // For project mode, we need to update the sectionIdsOrder
+      // This would require an API endpoint or project update
+      console.log('Move up not yet implemented for project mode')
+    } else {
+      // Swap orders for reports
+      updateReportSection(section.id, { order: targetSection.order })
+      updateReportSection(targetSection.id, { order: section.order })
+    }
   }
 }
 
 const handleMoveDown = (section: Section) => {
-  const currentIndex = sections.value.findIndex(s => s.id === section.id)
+  const currentIndex = sections.value.findIndex((s: Section) => s.id === section.id)
   if (currentIndex < sections.value.length - 1) {
     const targetSection = sections.value[currentIndex + 1]
     
-    // Swap orders
-    updateSection(section.id, { order: targetSection.order })
-    updateSection(targetSection.id, { order: section.order })
+    if (isProjectMode.value && props.projectId) {
+      // For project mode, we need to update the sectionIdsOrder
+      // This would require an API endpoint or project update
+      console.log('Move down not yet implemented for project mode')
+    } else {
+      // Swap orders for reports
+      updateReportSection(section.id, { order: targetSection.order })
+      updateReportSection(targetSection.id, { order: section.order })
+    }
   }
 }
 
@@ -364,5 +550,27 @@ const formatRelativeTime = (dateString: string): string => {
 
 .border-b {
   border-bottom: 1px solid #e0e0e0;
+}
+
+.section-skeleton {
+  min-height: 64px;
+  flex-shrink: 0;
+}
+
+.section-skeleton .v-skeleton-loader {
+  background-color: transparent;
+}
+
+.section-skeleton {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
 }
 </style> 

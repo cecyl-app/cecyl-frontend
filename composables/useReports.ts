@@ -1,59 +1,9 @@
 import type { Report, Section, AiPrompt } from '~/types/report'
 
-// Mock data for reports and sections
-const mockReports: Report[] = [
-    {
-        id: '1',
-        title: 'COVID-19 Vaccine Development Report',
-        projectId: '1',
-        sections: [
-            {
-                id: '1',
-                title: 'Executive Summary',
-                content: '# Executive Summary\n\nThis report presents the development progress of our COVID-19 mRNA vaccine candidate...',
-                order: 1,
-                reportId: '1',
-                createdAt: '2024-01-15T10:00:00Z',
-                updatedAt: '2024-01-15T10:00:00Z',
-            },
-            {
-                id: '2',
-                title: 'Research Methodology',
-                content: '# Research Methodology\n\n## Approach\n\nOur research approach follows industry best practices...',
-                order: 2,
-                reportId: '1',
-                createdAt: '2024-01-15T11:00:00Z',
-                updatedAt: '2024-01-15T11:00:00Z',
-            },
-            {
-                id: '3',
-                title: 'Findings and Results',
-                content: '# Findings and Results\n\n## Key Findings\n\n- Efficacy rate: 95%\n- Safety profile: Excellent',
-                order: 3,
-                reportId: '1',
-                createdAt: '2024-01-15T12:00:00Z',
-                updatedAt: '2024-01-15T12:00:00Z',
-            },
-            {
-                id: '4',
-                title: 'Conclusions',
-                content: '# Conclusions\n\nBased on our comprehensive analysis...',
-                order: 4,
-                reportId: '1',
-                createdAt: '2024-01-15T13:00:00Z',
-                updatedAt: '2024-01-15T13:00:00Z',
-            }
-        ],
-        createdAt: '2024-01-15T09:00:00Z',
-        updatedAt: '2024-01-15T13:00:00Z',
-    }
-]
-
-const mockAiPrompts: AiPrompt[] = []
 
 export const useReports = () => {
-    const reports = ref<Report[]>(mockReports)
-    const aiPrompts = ref<AiPrompt[]>(mockAiPrompts)
+    const reports = ref<Report[]>([])
+    const aiPrompts = ref<AiPrompt[]>([])
 
     // Report CRUD
     const getProjectReports = (projectId: string | string[]): Report[] => {
