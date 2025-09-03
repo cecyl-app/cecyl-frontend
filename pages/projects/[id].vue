@@ -11,32 +11,22 @@
           class="d-flex flex-column border-e"
         >
           <SectionSidebar
-            v-if="project || loading"
-            :project-id="projectId"
-            :project="project"
+            v-if="activeProject || loading"
             :active-section="activeSection"
             :loading="loading"
             @section-selected="handleSectionSelected"
           />
           
-          <!-- No Report State -->
+          <!-- No Sections State -->
           <v-card v-else class="flex-grow-1 d-flex align-center justify-center" flat>
             <div class="text-center pa-4">
               <v-icon size="60" color="grey-lighten-2" class="mb-3">
                 mdi-file-document-plus-outline
               </v-icon>
-              <h3 class="text-subtitle-1 mb-3">No Report Found</h3>
+              <h3 class="text-subtitle-1 mb-3">No Sections Found</h3>
               <p class="text-body-2 text-grey mb-3">
-                Create a report to start working with sections
+                Create sections to start writing content
               </p>
-              <v-btn
-                color="primary"
-                prepend-icon="mdi-plus"
-                size="small"
-                @click="handleCreateReport"
-              >
-                Create Report
-              </v-btn>
             </div>
           </v-card>
         </v-col>
@@ -72,8 +62,8 @@
                     variant="text"
                     size="small"
                     color="primary"
-                    @click="handlePreviewReport"
-                    :disabled="!currentReport"
+                    @click="handlePreviewProject"
+                    :disabled="!activeProject"
                   />
                 </div>
               </div>
@@ -127,44 +117,14 @@
       </v-row>
     </v-container>
 
-    <!-- Create Report Dialog -->
-    <v-dialog v-model="reportDialog" max-width="500">
-      <v-card>
-        <v-card-title>Create New Report</v-card-title>
-        <v-card-text>
-          <v-text-field
-            v-model="reportForm.title"
-            label="Report Title"
-            variant="outlined"
-            required
-            placeholder="e.g., Clinical Trial Report"
-          />
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn
-            variant="text"
-            @click="reportDialog = false"
-          >
-            Cancel
-          </v-btn>
-          <v-btn
-            color="primary"
-            @click="handleSaveReport"
-            :disabled="!reportForm.title.trim()"
-          >
-            Create
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
 
-    <!-- Preview Report Dialog -->
+
+    <!-- Preview Project Dialog -->
     <v-dialog v-model="previewDialog" max-width="1000" scrollable>
       <v-card>
         <v-card-title class="d-flex align-center">
           <v-icon class="me-2">mdi-eye</v-icon>
-          {{ currentReport?.title || 'Report Preview' }}
+          {{ activeProject?.name || 'Project Preview' }}
         </v-card-title>
         <v-divider />
         <v-card-text class="pa-0" style="max-height: 80vh;">
@@ -213,94 +173,40 @@
 
 <script setup lang="ts">
 import type { Project } from '~/types/project'
-import type { Report, Section } from '~/types/report'
+import type { Section } from '~/types/report'
+
+definePageMeta({
+  middleware: 'auth'
+})
 
 const route = useRoute()
 const router = useRouter()
-
+const projectId = ref<string>('')
 // Composables
 const { 
-  getProjectById, 
-  fetchProjectById, 
+  setActiveProject,
   improveSectionContent,
   createSection,
   updateSection: updateProjectSection,
-  deleteSection
+  deleteSection,
+  activeProject
 } = useProjects()
-const { 
-  getProjectReports, 
-  createReport, 
-  getSectionById, 
-  updateSection 
-} = useReports()
+
+watch(activeProject, (newProject) => {
+  console.log('activeProject', newProject)
+}, { immediate: true, deep: true })
 
 // Reactive data
-const projectId = computed(() => Array.isArray(route.params.id) ? route.params.id[0] : route.params.id)
 const loading = ref(false)
 
 // Use local ref for project but keep it synchronized with global state
-const project = ref<Project | undefined>()
-
-// Watch for changes in the global project state and sync local ref
-watch(
-  () => getProjectById(projectId.value),
-  (globalProject) => {
-    if (globalProject) {
-      project.value = globalProject
-      console.log('Project synced from global state:', globalProject.name, 'sections:', globalProject.sections?.length || 0)
-    }
-  },
-  { immediate: true, deep: true }
-)
-
-// Convert API sections to report sections for compatibility
-const currentReport = computed(() => {
-  console.log('CurrentReport computed - project.value:', {
-    hasProject: !!project.value,
-    projectName: project.value?.name,
-    hasSections: !!project.value?.sections,
-    sectionsIsArray: Array.isArray(project.value?.sections),
-    sectionsLength: project.value?.sections?.length || 0,
-    sections: project.value?.sections?.map(s => ({ id: s.id, name: s.name })) || []
-  })
-  
-  if (!project.value?.sections || !Array.isArray(project.value.sections)) {
-    console.log('CurrentReport: returning null - no valid sections')
-    return null
-  }
-  
-  const proj = project.value
-  const report = {
-    id: `report-${proj.id}`,
-    title: `${proj.name} Report`,
-    projectId: proj.id,
-    sections: proj.sections!.map((section, index) => ({
-      id: section.id,
-      title: section.name,
-      content: section.history[section.history.length - 1]?.content || '',
-      order: index,
-      reportId: `report-${proj.id}`,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    })),
-    createdAt: proj.createdAt || new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  }
-  
-  console.log('CurrentReport: returning report with sections:', report.sections.length)
-  return report
-})
 
 const activeSection = ref<Section | null>(null)
 const sectionContent = ref('')
 const originalContent = ref('')
 const hasUnsavedChanges = computed(() => sectionContent.value !== originalContent.value)
 
-// Report Dialog
-const reportDialog = ref(false)
-const reportForm = ref({
-  title: '',
-})
+
 
 // Preview Dialog
 const previewDialog = ref(false)
@@ -328,10 +234,6 @@ const handleSaveSection = async () => {
     // Use the new API to improve section content
     await improveSectionContent(projectId.value, activeSection.value.id, sectionContent.value)
     
-    // Also update the reports system for compatibility
-    updateSection(activeSection.value.id, {
-      content: sectionContent.value
-    })
     
     originalContent.value = sectionContent.value
     
@@ -348,48 +250,18 @@ const handleContentEnhanced = (enhancedContent: string) => {
   sectionContent.value = enhancedContent
 }
 
-const handleCreateReport = () => {
-  reportForm.value.title = ''
-  reportDialog.value = true
-}
 
-const handleSaveReport = () => {
-  if (!project.value || !reportForm.value.title.trim()) return
-  
-  const newReport = createReport({
-    title: reportForm.value.title,
-    projectId: projectId.value,
-  })
-  
-  reportDialog.value = false
-  
-  // Auto-create first section
-  nextTick(() => {
-    if (newReport) {
-      // The SectionSidebar component will handle creating the first section
-    }
-  })
-}
 
-const handlePreviewReport = () => {
-  if (!currentReport.value?.sections) return
+const handlePreviewProject = () => {
+  if (!activeProject.value?.sections) return
   
-  previewContent.value = currentReport.value.sections.map((section: Section) => ({
-    title: section.title,
-    content: section.content,
-    updatedAt: section.updatedAt,
+  previewContent.value = activeProject.value.sections.map((section) => ({
+    title: section.name,
+    content: section.history?.[section.history.length - 1]?.content || '',
+    updatedAt: new Date().toISOString(),
   }))
   
   previewDialog.value = true
-}
-
-const getStatusColor = (status: string) => {
-  const colors = {
-    active: 'success',
-    'on-hold': 'warning',
-    completed: 'info'
-  }
-  return colors[status as keyof typeof colors] || 'grey'
 }
 
 const formatRelativeTime = (dateString: string): string => {
@@ -413,17 +285,24 @@ const formatRelativeTime = (dateString: string): string => {
 onMounted(async () => {
   loading.value = true
   try {
-    // Fetch project data - this will update the global projects state
-    const loadedProject = await fetchProjectById(projectId.value)
-    
-    // Update local ref immediately and let watcher handle sync
-    project.value = loadedProject
+    // Try to set active project if it's already in local state 
+    projectId.value = route.params.id as string
+    let project = setActiveProject(projectId.value)
     
     // Wait for reactivity to update, then select first section
     await nextTick()
     
-    if (currentReport.value?.sections && currentReport.value.sections.length > 0) {
-      const firstSection = currentReport.value.sections[0]
+    if (activeProject.value?.sections && activeProject.value.sections.length > 0) {
+      const firstSection = {
+        id: activeProject.value.sections[0].id,
+        title: activeProject.value.sections[0].name,
+        content: activeProject.value.sections[0].history?.[activeProject.value.sections[0].history.length - 1]?.content || '',
+        order: 0,
+        projectId: activeProject.value.id,
+        reportId: `project-${activeProject.value.id}`,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
       handleSectionSelected(firstSection)
     }
   } catch (error) {

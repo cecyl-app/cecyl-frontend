@@ -46,7 +46,7 @@ export interface ContentUpdateRequest {
 export interface ProjectFile {
   id: string
   filename: string
-  size: string
+  size?: string
 }
 
 export interface FileUploadResponse {

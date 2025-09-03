@@ -115,6 +115,10 @@
 <script setup lang="ts">
 import type { Project } from '~/types/project'
 
+definePageMeta({
+  middleware: 'auth'
+})
+
 const { 
   projects, 
   createProject, 

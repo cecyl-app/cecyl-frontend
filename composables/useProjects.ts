@@ -10,7 +10,7 @@ import type {
 } from '~/types/project'
 
 // Base API URL from environment variable
-const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:6001'
+const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:8000'
 
 // Create axios instance
 const apiClient = axios.create({
@@ -18,7 +18,8 @@ const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 10000, // 10 seconds timeout
+  withCredentials: true, // Important for handling cookies
+  timeout: 300000, // 300 seconds timeout
 })
 
 // Add request interceptor for logging
@@ -41,23 +42,43 @@ apiClient.interceptors.response.use(
   },
   (error) => {
     console.error('API Response Error:', error.response?.data || error.message)
+
+    // Handle authentication errors globally
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      // Use the auth composable's error handler
+      const { handleApiError } = useAuth()
+      handleApiError(error.response)
+    }
+
     return Promise.reject(error)
   }
 )
 
-export const useProjects = () => {
-  const projects = ref<Project[]>([])
-  const requirements = ref<Requirement[]>([])
-  const regulations = ref<Regulation[]>([])
+// Global reactive state - shared across all component instances
+const projects = ref<Project[]>([])
+const requirements = ref<Requirement[]>([])
+const regulations = ref<Regulation[]>([])
+const activeProject = ref<Project | null>(null)
 
+export const useProjects = () => {
   // API Helper function
+  //This function is correct, never change it.
   const apiCall = async <T>(endpoint: string, options: any = {}): Promise<T> => {
     try {
-      const response = await apiClient.request<T>({
-        url: endpoint,
-        ...options,
-      })
-      return response.data
+      if (options.method !== 'PUT') {
+        const response = await apiClient.request<T>({
+          url: endpoint,
+          ...options,
+        })
+        return response.data
+      }
+      else {
+        await apiClient.request<T>({
+          url: endpoint,
+          ...options,
+        })
+        return options.data
+      }
     } catch (error) {
       console.error(`API call failed for ${endpoint}:`, error)
       throw error
@@ -65,7 +86,7 @@ export const useProjects = () => {
   }
 
   // Project CRUD Operations
-  const createProject = async (projectData: { name: string; context: string; language?: string }) => {
+  const createProject = async (projectData: { name: string; context: string; language: string }) => {
     try {
       const response = await apiCall<Project>('/projects', {
         method: 'POST',
@@ -76,7 +97,11 @@ export const useProjects = () => {
         },
       })
 
-      projects.value.push(response)
+      projects.value.push({
+        id: response.id,
+        ...projectData,
+        sectionIdsOrder: []
+      })
       return response
     } catch (error) {
       console.error('Failed to create project:', error)
@@ -88,13 +113,29 @@ export const useProjects = () => {
     try {
       const response = await apiCall<Project>(`/projects/${id}`, {
         method: 'PUT',
-        data: projectData,
+        data: { ...projectData, language: 'italian' }
       })
-
       const index = projects.value.findIndex(p => p.id === id)
       if (index !== -1) {
-        projects.value[index] = response
+        // Preserve existing sections if response doesn't include them
+        const updatedProject = {
+          ...response,
+          id,
+          sections: response.sections || projects.value[index].sections
+        }
+        projects.value[index] = updatedProject
+
+        // Update activeProject only if this is the active project
+        if (activeProject.value?.id === id) {
+          activeProject.value = { ...updatedProject }
+        }
       }
+
+      console.log('updateProject - activeProject after update:', {
+        projectId: activeProject.value?.id,
+        projectName: activeProject.value?.name,
+        sectionsCount: activeProject.value?.sections?.length || 0
+      })
 
       return response
     } catch (error) {
@@ -124,10 +165,30 @@ export const useProjects = () => {
 
       const index = projects.value.findIndex(p => p.id === id)
       if (index !== -1) {
-        projects.value[index] = response
+        projects.value[index] = {
+          ...response,
+          id
+        }
+        activeProject.value = {
+          ...response,
+          id
+        }
       } else {
-        projects.value.push(response)
+        projects.value.push({
+          ...response,
+          id
+        })
+        activeProject.value = {
+          ...response,
+          id
+        }
       }
+
+      console.log('useProjects - activeProject updated:', {
+        projectId: activeProject.value?.id,
+        projectName: activeProject.value?.name,
+        sectionsCount: activeProject.value?.sections?.length || 0
+      })
 
       return response
     } catch (error) {
@@ -161,15 +222,7 @@ export const useProjects = () => {
           name: sectionData.name
         },
       })
-
-      // Update the local project with the new section
-      const projectIndex = projects.value.findIndex(p => p.id === projectId)
-      if (projectIndex !== -1) {
-        if (!projects.value[projectIndex].sections) {
-          projects.value[projectIndex].sections = []
-        }
-        projects.value[projectIndex].sections!.push(response)
-      }
+      activeProject.value?.sections?.push({ ...sectionData, id: response.id, history: [] })
 
       return response
     } catch (error) {
@@ -193,6 +246,11 @@ export const useProjects = () => {
         const sectionIndex = projects.value[projectIndex].sections!.findIndex(s => s.id === sectionId)
         if (sectionIndex !== -1) {
           projects.value[projectIndex].sections![sectionIndex] = response
+
+          // Update activeProject to trigger reactivity
+          if (activeProject.value && activeProject.value.id === projectId) {
+            activeProject.value = { ...projects.value[projectIndex] }
+          }
         }
       }
 
@@ -210,15 +268,11 @@ export const useProjects = () => {
       })
 
       // Remove the section from local project
-      const projectIndex = projects.value.findIndex(p => p.id === projectId)
-      if (projectIndex !== -1 && projects.value[projectIndex].sections) {
-        projects.value[projectIndex].sections = projects.value[projectIndex].sections!.filter(s => s.id !== sectionId)
-
-        // Also update sectionIdsOrder
-        if (projects.value[projectIndex].sectionIdsOrder) {
-          projects.value[projectIndex].sectionIdsOrder = projects.value[projectIndex].sectionIdsOrder.filter(id => id !== sectionId)
-        }
+      // Update activeProject to trigger reactivity
+      if (activeProject.value && activeProject.value.id === projectId) {
+        activeProject.value.sections = activeProject.value.sections!.filter(s => s.id !== sectionId)
       }
+
     } catch (error) {
       console.error('Failed to delete section:', error)
       throw error
@@ -319,9 +373,16 @@ export const useProjects = () => {
     }
   }
 
-  // Getters and utility functions
-  const getProjectById = (id: string) => {
-    return projects.value.find(project => project.id === id)
+  const setActiveProject = async (id: string) => {
+    console.log('Setting active project:', id)
+    const project = await fetchProjectById(id)
+    if (project) {
+      activeProject.value = {
+        ...project,
+        id
+      }
+    }
+    return project
   }
 
   const getProjectRequirements = (projectId: string) => {
@@ -401,17 +462,30 @@ export const useProjects = () => {
     return []
   }
 
+  const downloadReport = async (projectId: string) => {
+    try {
+      const response = await apiCall(`/projects/${projectId}/generateDocx`, {
+        method: 'POST',
+      })
+      return response
+    } catch (error) {
+      console.error('Failed to download report:', error)
+      throw error
+    }
+  }
+
   return {
     projects,
     requirements,
     regulations,
+    activeProject,
     // Main project API functions
     createProject,
     updateProject,
     deleteProject,
     fetchProjects,
     fetchProjectById,
-    getProjectById,
+    setActiveProject,
     // Section API functions
     createSection,
     updateSection,
@@ -435,5 +509,6 @@ export const useProjects = () => {
     getProjectTimeline,
     getProjectRequirements,
     getProjectRegulations,
+    downloadReport,
   }
 } 

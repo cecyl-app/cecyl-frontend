@@ -1,76 +1,32 @@
-import type { ExtendedProjectFile } from '~/types/project'
+import type { ProjectFile } from '~/types/project'
 
+const files = ref<ProjectFile[]>([])
 export const useFiles = () => {
-    const files = ref<ExtendedProjectFile[]>([])
     const isUploading = ref(false)
 
     // Get file management functions from useProjects
     const { fetchProjectFiles, uploadProjectFiles, deleteProjectFile } = useProjects()
 
-    // Convert API ProjectFile to ExtendedProjectFile for UI
-    const convertToExtendedFile = (apiFile: any): ExtendedProjectFile => {
-        const sizeInBytes = typeof apiFile.size === 'string' ? parseInt(apiFile.size) : apiFile.size
-        const fileExtension = apiFile.filename.split('.').pop()?.toLowerCase() || ''
-
-        return {
-            id: apiFile.id,
-            filename: apiFile.filename,
-            name: apiFile.filename, // alias for backward compatibility
-            size: apiFile.size,
-            sizeBytes: sizeInBytes,
-            type: getMimeTypeFromExtension(fileExtension),
-            url: `/api/projects/files/${apiFile.id}/download`, // Construct download URL
-            uploadedAt: apiFile.uploadedAt || new Date().toISOString(),
-        }
-    }
-
-    // Get MIME type from file extension
-    const getMimeTypeFromExtension = (extension: string): string => {
-        const mimeTypes: Record<string, string> = {
-            pdf: 'application/pdf',
-            doc: 'application/msword',
-            docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            xls: 'application/vnd.ms-excel',
-            xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            ppt: 'application/vnd.ms-powerpoint',
-            pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-            txt: 'text/plain',
-            csv: 'text/csv',
-            jpg: 'image/jpeg',
-            jpeg: 'image/jpeg',
-            png: 'image/png',
-            gif: 'image/gif',
-        }
-        return mimeTypes[extension] || 'application/octet-stream'
-    }
-
     // File operations
-    const getProjectFiles = (projectId: string | string[]): ExtendedProjectFile[] => {
-        const id = Array.isArray(projectId) ? projectId[0] : projectId
-        return files.value
-            .filter(file => file.id.includes(id) || true) // Filter by project if needed
-            .sort((a, b) => new Date(b.uploadedAt || 0).getTime() - new Date(a.uploadedAt || 0).getTime())
-    }
-
     const loadProjectFiles = async (projectId: string) => {
         try {
             const apiFiles = await fetchProjectFiles(projectId)
-            files.value = apiFiles.map(convertToExtendedFile)
+            files.value = apiFiles
         } catch (error) {
             console.error('Failed to load project files:', error)
         }
     }
 
-    const getFileById = (fileId: string): ExtendedProjectFile | undefined => {
+    const getFileById = (fileId: string): ProjectFile | undefined => {
         return files.value.find(file => file.id === fileId)
     }
 
-    const uploadFile = async (file: File, projectId: string): Promise<ExtendedProjectFile> => {
+    const uploadFile = async (file: File, projectId: string): Promise<ProjectFile> => {
         isUploading.value = true
 
         try {
             const uploadedFiles = await uploadProjectFiles(projectId, [file])
-            const newExtendedFiles = uploadedFiles.map(convertToExtendedFile)
+            const newExtendedFiles = uploadedFiles
 
             files.value.push(...newExtendedFiles)
             return newExtendedFiles[0]
@@ -82,7 +38,7 @@ export const useFiles = () => {
         }
     }
 
-    const uploadFiles = async (filesToUpload: File[], projectId: string): Promise<ExtendedProjectFile[]> => {
+    const uploadFiles = async (filesToUpload: File[], projectId: string): Promise<ProjectFile[]> => {
         if (filesToUpload.length === 0) return []
 
         isUploading.value = true
@@ -92,7 +48,7 @@ export const useFiles = () => {
             const uploadedFiles = await uploadProjectFiles(projectId, filesToUpload)
 
             // Convert API response to ExtendedProjectFile and add to files list
-            const newExtendedFiles = uploadedFiles.map(convertToExtendedFile)
+            const newExtendedFiles = uploadedFiles
             files.value.push(...newExtendedFiles)
 
             console.log(`Successfully uploaded ${newExtendedFiles.length} files:`, newExtendedFiles.map(f => f.filename))
@@ -113,20 +69,6 @@ export const useFiles = () => {
             console.error('Failed to delete file:', error)
             throw error
         }
-    }
-
-    const downloadFile = (fileId: string) => {
-        const file = getFileById(fileId)
-        if (!file) return
-
-        // Create download link
-        const link = document.createElement('a')
-        link.href = file.url || `/api/files/${fileId}/download`
-        link.download = file.name
-        link.target = '_blank'
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
     }
 
     const formatFileSize = (bytes: number | string): string => {
@@ -154,13 +96,11 @@ export const useFiles = () => {
     return {
         files,
         isUploading,
-        getProjectFiles,
         loadProjectFiles,
         getFileById,
         uploadFile,
         uploadFiles,
         deleteFile,
-        downloadFile,
         formatFileSize,
         getFileIcon,
     }

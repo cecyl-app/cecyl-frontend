@@ -63,33 +63,24 @@
         <v-divider class="flex-shrink-0" />
         <div class="file-list flex-grow-1 overflow-y-auto">
           <div
-            v-for="file in projectFiles"
+            v-for="file in files"
             :key="file.id"
             class="file-item pa-3 d-flex align-center border-b"
           >
             <v-icon
-              :icon="getFileIcon(file.type || '')"
-              :color="getFileColor(file.type || '')"
+              :icon="getFileIcon('pdf')"
+              :color="getFileColor('pdf')"
               size="20"
               class="me-3"
             />
             
             <div class="flex-grow-1 min-w-0">
               <div class="text-body-2 font-weight-medium text-truncate">
-                {{ file.name }}
-              </div>
-              <div class="text-caption text-grey">
-                {{ formatFileSize(file.sizeBytes || file.size) }} • {{ formatDate(file.uploadedAt || new Date().toISOString()) }}
+                {{ file.filename }}
               </div>
             </div>
             
             <div class="ml-2 d-flex">
-              <v-btn
-                icon="mdi-download"
-                variant="text"
-                size="small"
-                @click="handleDownload(file.id)"
-              />
               <v-btn
                 icon="mdi-delete"
                 variant="text"
@@ -100,7 +91,7 @@
             </div>
           </div>
           
-          <div v-if="projectFiles.length === 0" class="text-center pa-6">
+          <div v-if="files.length === 0" class="text-center pa-6">
             <v-icon size="48" color="grey-lighten-2" class="mb-3">
               mdi-folder-open
             </v-icon>
@@ -121,22 +112,19 @@ interface Props {
 
 const props = defineProps<Props>()
 
-const { 
-  getProjectFiles, 
+const {  
   loadProjectFiles,
   uploadFiles, 
   deleteFile, 
-  downloadFile, 
   formatFileSize, 
   getFileIcon, 
-  isUploading 
+  isUploading,
+  files
 } = useFiles()
 
 const fileInput = ref<HTMLInputElement>()
 const dropZone = ref<HTMLElement>()
 const isDragOver = ref(false)
-
-const projectFiles = computed(() => getProjectFiles(props.projectId))
 
 // Load files when component mounts or projectId changes
 onMounted(() => {
@@ -222,10 +210,6 @@ const handleFiles = async (files: File[]) => {
     console.error('Failed to upload files:', error)
     // Could add user-friendly error notification here
   }
-}
-
-const handleDownload = (fileId: string) => {
-  downloadFile(fileId)
 }
 
 const handleDelete = async (fileId: string) => {
