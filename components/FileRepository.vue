@@ -198,14 +198,7 @@ const handleFiles = async (files: File[]) => {
   
   // Upload all files in a single request
   try {
-    const uploadedFiles = await uploadFiles(validFiles, props.projectId)
-    
-    // Show success message
-    if (uploadedFiles.length > 0) {
-      console.log(`Successfully uploaded ${uploadedFiles.length} file(s)`)
-      // Optionally trigger a refresh of the file list
-      await loadProjectFiles(props.projectId)
-    }
+    await uploadFiles(validFiles, props.projectId)
   } catch (error) {
     console.error('Failed to upload files:', error)
     // Could add user-friendly error notification here

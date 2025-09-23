@@ -26,10 +26,13 @@ export const useFiles = () => {
 
         try {
             const uploadedFiles = await uploadProjectFiles(projectId, [file])
-            const newExtendedFiles = uploadedFiles
-
-            files.value.push(...newExtendedFiles)
-            return newExtendedFiles[0]
+            const newExtendedFiles = Array.isArray(uploadedFiles) ? uploadedFiles : []
+            if (newExtendedFiles.length > 0) {
+                files.value.push(...newExtendedFiles)
+                return newExtendedFiles[0]
+            } else {
+                throw new Error('No files were returned from API after upload')
+            }
         } catch (error) {
             console.error('Failed to upload file:', error)
             throw error
@@ -46,12 +49,16 @@ export const useFiles = () => {
         try {
             // Upload all files in a single request
             const uploadedFiles = await uploadProjectFiles(projectId, filesToUpload)
+            // Ensure uploadedFiles is an array
+            const newExtendedFiles = Array.isArray(uploadedFiles) ? uploadedFiles : []
 
-            // Convert API response to ExtendedProjectFile and add to files list
-            const newExtendedFiles = uploadedFiles
-            files.value.push(...newExtendedFiles)
+            if (newExtendedFiles.length > 0) {
+                files.value.push(...newExtendedFiles)
+                console.log(`Successfully uploaded ${newExtendedFiles.length} files:`, newExtendedFiles.map(f => f.filename))
+            } else {
+                console.warn('Upload completed but no files were returned from API')
+            }
 
-            console.log(`Successfully uploaded ${newExtendedFiles.length} files:`, newExtendedFiles.map(f => f.filename))
             return newExtendedFiles
         } catch (error) {
             console.error('Failed to upload files:', error)

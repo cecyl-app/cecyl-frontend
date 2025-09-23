@@ -8,6 +8,7 @@ export interface Project {
   sectionIdsOrder: string[]
   sections?: Section[]
   createdAt?: string
+  updatedAt?: string
 }
 
 export interface Section {

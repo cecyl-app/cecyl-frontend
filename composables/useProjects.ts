@@ -355,7 +355,7 @@ export const useProjects = () => {
         },
       })
 
-      return response.files
+      return response
     } catch (error) {
       console.error('Failed to upload files:', error)
       throw error

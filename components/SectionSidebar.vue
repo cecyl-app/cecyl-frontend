@@ -1,23 +1,24 @@
 <template>
-  <v-card class="h-100">
-    <v-card-title class="d-flex justify-space-between align-center">
-      <div>
-      <h3 class="text-h6 mb-2">
+  <v-card class="h-100 w-100">
+    <v-card-title class="d-flex align-start pa-2">
+      <div class="flex-grow-1 mr-2" style="min-width: 0;">
+        <h3 class="text-h6 mb-2 text-truncate">
           {{ activeProject?.name }}
         </h3>
-        <div class="text-caption text-grey">
-          Last updated: {{ formatDate(activeProject?.createdAt || new Date().toISOString()) }}
+        <div class="text-caption text-grey text-truncate">
+          Last updated: <br/> {{ formatDate(activeProject?.updatedAt || new Date().toISOString()) }}
         </div>
         <div class="text-caption text-grey">
           {{ sections.length }} {{ sections.length === 1 ? 'section' : 'sections' }}
         </div>
       </div>
-      <v-menu>
+      <v-menu class="flex-shrink-0">
         <template v-slot:activator="{ props: menuProps }">
           <v-btn
             icon="mdi-dots-vertical"
             variant="text"
             size="small"
+            class="flex-shrink-0"
             v-bind="menuProps"
           />
         </template>
@@ -38,7 +39,7 @@
       </v-menu>
     </v-card-title>
     
-    <v-card-text class="pa-0">
+    <v-card-text class="pa-0" style="overflow: hidden;">
       <!-- Project/Report Header -->
       <div v-if="loading || !activeProject" class="pa-4 border-b">
         <!-- Loading skeleton for header -->
@@ -554,6 +555,15 @@ const formatRelativeTime = (dateString: string): string => {
 </script>
 
 <style scoped>
+.v-card {
+  overflow: hidden;
+}
+
+.v-card-title {
+  max-width: 100%;
+  overflow: hidden;
+}
+
 .section-list {
   max-height: calc(100vh - 300px);
   overflow-y: auto;
