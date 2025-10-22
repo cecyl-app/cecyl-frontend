@@ -516,12 +516,17 @@ const handleMoveDown = async (section: Section) => {
 
 const handleDownloadReport = async () => {
   if (activeProject.value?.id) {
-    console.log('Downloading report for project:', activeProject.value.id)
-    const report: any = await downloadReport(activeProject.value.id)
-    //report is an octet-stream to download as docx file
-    const blob = new Blob([report], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
-    const url = URL.createObjectURL(blob)
-    window.open(url, '_blank')
+      console.log('Downloading report for project:', activeProject.value.id)
+      const blob = await downloadReport(activeProject.value.id)
+      // Create a download link and trigger download
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${activeProject.value.name || 'report'}.docx`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url) // Clean up the object URL
   }
 }
 

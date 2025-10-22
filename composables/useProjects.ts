@@ -464,10 +464,13 @@ export const useProjects = () => {
 
   const downloadReport = async (projectId: string) => {
     try {
-      const response = await apiCall(`/projects/${projectId}/generateDocx`, {
+      // Use axios directly for binary data instead of apiCall wrapper
+      const response = await apiClient.request({
+        url: `/projects/${projectId}/generateDocx`,
         method: 'POST',
+        responseType: 'blob', // Important: tell axios to expect binary data
       })
-      return response
+      return response.data
     } catch (error) {
       console.error('Failed to download report:', error)
       throw error
